@@ -22,6 +22,8 @@ export interface TasksApi {
   addTask: (title: string, estimatedPomodoros?: number) => void;
   toggleDone: (id: string) => void;
   removeTask: (id: string) => void;
+  /** 撤销"最近一次删除"（恢复任务与它当天的归档记录） */
+  undoRemove: () => void;
   setActiveTask: (id: string | null) => void;
   /** 一个专注完成：给进行中的任务 +1 */
   completePomodoro: () => void;
@@ -183,15 +185,40 @@ export function useTasks(options: Options = {}): TasksApi {
     [setTasks, setArchive, setActiveTaskId],
   );
 
+  /**
+   * 最近一次删除的快照。
+   * 删除任务是不可逆的破坏性操作，但它通常发生在"列表里顺手清理"时 ——
+   * 记下快照就能给一个撤销窗口，比弹确认框打断操作更合适。
+   */
+  const lastRemovedRef = useRef<{ task: Task; date: string } | null>(null);
+
   const removeTask = useCallback(
     (id: string) => {
+      const task = tasksRef.current.find((item) => item.id === id);
+      if (!task) return;
+
       const today = dayKey(new Date());
-      setTasks((prev) => prev.filter((task) => task.id !== id));
+      lastRemovedRef.current = { task, date: today };
+
+      setTasks((prev) => prev.filter((item) => item.id !== id));
       setArchive((prev) => removeArchiveTask(prev, today, id));
       setActiveTaskId((prev) => (prev === id ? null : prev));
     },
     [setTasks, setArchive, setActiveTaskId],
   );
+
+  const undoRemove = useCallback(() => {
+    const snapshot = lastRemovedRef.current;
+    if (!snapshot) return;
+    lastRemovedRef.current = null;
+
+    const { task, date } = snapshot;
+    setTasks((prev) => (prev.some((item) => item.id === task.id) ? prev : [...prev, task]));
+    // 已完成的任务在勾选时入过档，删除时被一并移除 —— 撤销要把它放回去
+    if (task.done) {
+      setArchive((prev) => upsertArchiveTasks(prev, date, [toArchived(task, 'done')]));
+    }
+  }, [setTasks, setArchive]);
 
   const setActiveTask = useCallback(
     (id: string | null) => setActiveTaskId(id),
@@ -276,6 +303,7 @@ export function useTasks(options: Options = {}): TasksApi {
     addTask,
     toggleDone,
     removeTask,
+    undoRemove,
     setActiveTask,
     completePomodoro,
     clearCompleted,

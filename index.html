@@ -10,6 +10,13 @@
     />
     <title>Lumora Focus</title>
 
+    <!--
+      背景视频走 CloudFront（跨域，SW 不接管）。提前建连可以让首次切场景少一个 RTT；
+      注意不能用 crossorigin：视频是普通媒体请求，带 CORS 的预连接反而对不上。
+    -->
+    <link rel="preconnect" href="https://d8j0ntlcm91z4.cloudfront.net" />
+    <link rel="dns-prefetch" href="https://d8j0ntlcm91z4.cloudfront.net" />
+
     <!-- 字体已镜像到本地（原先依赖 Google Fonts，现在不再有外部单点） -->
     <link
       rel="preload"
@@ -20,7 +27,12 @@
     />
 
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="/icon.svg" />
+    <!-- iOS 不支持 SVG 图标：必须是 PNG（180×180），否则装到桌面会用页面截图 -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Lumora" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="manifest" href="/manifest.webmanifest" />
   </head>
   <body>

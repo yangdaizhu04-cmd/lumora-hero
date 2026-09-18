@@ -21,4 +21,6 @@ export const DEFAULT_SETTINGS: PomodoroSettings = {
   // 默认强度偏保守（约 -13dB，相对环境音），要更厚可以在设置里调
   bedLevel: 0.18,
   spatialSound: true,
+  // 每周目标：0 = 不设定（统计条上不显示），要追踪目标可以在设置里改成 5 的倍数
+  weeklyGoal: 20,
 };

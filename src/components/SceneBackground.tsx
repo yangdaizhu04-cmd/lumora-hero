@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { SCENE_GRADIENT, SCENE_OVERLAY } from '../data/scenes';
 import type { Scene } from '../types';
 
 interface Props {
@@ -10,18 +9,27 @@ interface Props {
 }
 
 /**
+ * 同时保留在 DOM 里的视频上限。
+ * 4 个全留住会一次开 4 路请求（含 3 个用不到的场景）；只留当前的又会让
+ * "专注于休息来回切换"反复重新下载。取 3：当前 + 正在显示 + 最近一个。
+ */
+const MAX_MOUNTED = 3;
+
+/**
  * 背景层，三层结构：
  * 1. 场景渐变（永远铺在底部，视频没就绪或加载失败时页面依然成立，不会出现黑屏）
  * 2. 视频（只在当前场景就绪后才淡入；切换时保留上一场景的最后一帧直到新场景可播）
  * 3. 可读性遮罩
  *
- * 另外：只播放当前场景的视频，页面不可见时全部暂停（省电）。
+ * 另外：只播放当前场景的视频，页面不可见时全部暂停（省电）；
+ * 视频按需挂载（见 MAX_MOUNTED），首次进入不再为用不到的场景发请求。
  */
 export function SceneBackground({ scenes, activeIndex, mode }: Props) {
   const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
   const [displayedIndex, setDisplayedIndex] = useState(activeIndex);
   const [readyIndexes, setReadyIndexes] = useState<number[]>([]);
   const [failedIndexes, setFailedIndexes] = useState<number[]>([]);
+  const [mountedIndexes, setMountedIndexes] = useState<number[]>([activeIndex]);
 
   const activeReady = readyIndexes.includes(activeIndex);
   const activeFailed = failedIndexes.includes(activeIndex);
@@ -32,6 +40,20 @@ export function SceneBackground({ scenes, activeIndex, mode }: Props) {
       setDisplayedIndex(activeIndex);
     }
   }, [activeIndex, mode, activeReady, activeFailed]);
+
+  // 最近用过的场景保留在 DOM 里（LRU），避免来回切换时反复下载
+  useEffect(() => {
+    setMountedIndexes((prev) => {
+      const next = [
+        activeIndex,
+        displayedIndex,
+        ...prev.filter((index) => index !== activeIndex && index !== displayedIndex),
+      ].slice(0, MAX_MOUNTED);
+      return next.length === prev.length && next.every((value, i) => value === prev[i])
+        ? prev
+        : next;
+    });
+  }, [activeIndex, displayedIndex]);
 
   // 播放控制：只播放当前场景，且页面可见
   useEffect(() => {
@@ -62,7 +84,7 @@ export function SceneBackground({ scenes, activeIndex, mode }: Props) {
           key={scene.id}
           className="absolute inset-0 transition-opacity duration-1000 ease-in-out"
           style={{
-            background: SCENE_GRADIENT[scene.id],
+            background: scene.gradient,
             opacity: index === displayedIndex ? 1 : 0,
           }}
         />
@@ -70,6 +92,7 @@ export function SceneBackground({ scenes, activeIndex, mode }: Props) {
 
       {mode === 'video' &&
         scenes.map((scene, index) => {
+          if (!mountedIndexes.includes(index)) return null;
           if (failedIndexes.includes(index)) return null;
           const visible = index === displayedIndex && readyIndexes.includes(index);
 
@@ -104,7 +127,7 @@ export function SceneBackground({ scenes, activeIndex, mode }: Props) {
 
       <div
         className="absolute inset-0 transition-opacity duration-1000 ease-in-out"
-        style={{ background: SCENE_OVERLAY[overlayScene.id] }}
+        style={{ background: overlayScene.overlay }}
       />
     </div>
   );

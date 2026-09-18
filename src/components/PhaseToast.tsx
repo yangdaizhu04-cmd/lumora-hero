@@ -1,15 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
+import { SANS } from '../lib/ui';
+import type { ToastState } from '../types';
 
 interface Props {
   /** 每次变化触发一次提示；id 用于重置计时 */
-  toast: { id: number; text: string } | null;
+  toast: ToastState | null;
   onDismiss: () => void;
 }
 
 const VISIBLE_MS = 2600;
+/** 带操作按钮的提示要给人留出反应时间（"撤销"这类操作通常需要几秒） */
+const ACTION_VISIBLE_MS = 6000;
 
 /**
- * 阶段切换时中央浮现的引导语。
+ * 阶段切换时中央浮现的引导语（也可携带一个操作按钮，如「撤销」）。
  * 注意：effect 只依赖 toast.id —— 父组件每 200ms 会因倒计时重渲染，
  * 若依赖整个 toast 对象或 onDismiss 函数，计时器会被不断重置导致永不消失（详见 开发踩坑点.md）。
  */
@@ -19,16 +23,20 @@ export function PhaseToast({ toast, onDismiss }: Props) {
   dismissRef.current = onDismiss;
 
   const toastId = toast?.id ?? null;
+  const hasAction = toast?.action !== undefined;
 
   useEffect(() => {
     if (toastId === null) return;
     setVisible(true);
-    const timer = window.setTimeout(() => {
-      setVisible(false);
-      dismissRef.current();
-    }, VISIBLE_MS);
+    const timer = window.setTimeout(
+      () => {
+        setVisible(false);
+        dismissRef.current();
+      },
+      hasAction ? ACTION_VISIBLE_MS : VISIBLE_MS,
+    );
     return () => window.clearTimeout(timer);
-  }, [toastId]);
+  }, [toastId, hasAction]);
 
   if (!toast) return null;
 
@@ -39,9 +47,9 @@ export function PhaseToast({ toast, onDismiss }: Props) {
       aria-live="polite"
     >
       <div
-        className="rounded-full px-7 py-4 text-lg backdrop-blur-md sm:text-xl"
+        className="flex items-center gap-3 rounded-full px-7 py-4 text-lg backdrop-blur-md sm:text-xl"
         style={{
-          fontFamily: 'system-ui, sans-serif',
+          fontFamily: SANS,
           color: '#ffffff',
           background: 'rgba(0,0,0,0.32)',
           border: '1px solid rgba(255,255,255,0.16)',
@@ -52,7 +60,20 @@ export function PhaseToast({ toast, onDismiss }: Props) {
           transitionTimingFunction: 'cubic-bezier(0.4,0,0.2,1)',
         }}
       >
-        {toast.text}
+        <span>{toast.text}</span>
+        {toast.action && (
+          <button
+            type="button"
+            onClick={() => {
+              toast.action?.onClick();
+              setVisible(false);
+              dismissRef.current();
+            }}
+            className="pointer-events-auto shrink-0 rounded-full bg-white/90 px-4 py-1.5 text-sm text-[#182C41] transition-opacity duration-300 hover:opacity-85"
+          >
+            {toast.action.label}
+          </button>
+        )}
       </div>
     </div>
   );

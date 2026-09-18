@@ -18,7 +18,11 @@ export interface FocusLogApi {
   clearLog: () => void;
 }
 
-export function useFocusLog(): FocusLogApi {
+/**
+ * @param now 由调用方传入"当前的分钟级时钟"（App 里的 useClockTick）。
+ *   统计与"今日"强相关，如果只依赖渲染时刻的时间，页面跨零点常开时数据不会滚到新的一天。
+ */
+export function useFocusLog(now: number): FocusLogApi {
   const [log, setLog] = usePersistentState<FocusLogEntry[]>(STORAGE_KEYS.log, []);
 
   const addEntry = useCallback(
@@ -46,7 +50,7 @@ export function useFocusLog(): FocusLogApi {
 
   const clearLog = useCallback(() => setLog([]), [setLog]);
 
-  const stats = useMemo(() => computeStats(log), [log]);
+  const stats = useMemo(() => computeStats(log, new Date(now)), [log, now]);
 
   return { log, stats, addEntry, clearLog };
 }

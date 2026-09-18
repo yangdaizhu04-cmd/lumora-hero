@@ -1,13 +1,12 @@
 import { memo } from 'react';
 import { Target } from 'lucide-react';
+import { SANS } from '../lib/ui';
 import type { Task } from '../types';
 
 interface Props {
   task: Task;
   onClick: () => void;
 }
-
-const SANS = 'system-ui, sans-serif';
 
 /** 计时器下方的「进行中任务」快捷入口 */
 function ActiveTaskBarComponent({ task, onClick }: Props) {

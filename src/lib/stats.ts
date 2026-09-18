@@ -65,3 +65,70 @@ export function formatMinutes(minutes: number): string {
   const rest = minutes % 60;
   return rest === 0 ? `${hours} 小时` : `${hours} 小时 ${rest} 分`;
 }
+
+/** 本周（周一为一周起点）完成的番茄数 */
+export function countThisWeek(log: FocusLogEntry[], now = new Date()): number {
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  // getDay(): 0=周日，换算成"周一=0"
+  start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+
+  const startKey = dayKey(start);
+  const todayKey = dayKey(now);
+  return log.filter(
+    (entry) => entry.date >= startKey && entry.date <= todayKey,
+  ).length;
+}
+
+export interface HeatCell {
+  date: string;
+  count: number;
+  minutes: number;
+  /** 还没到来的日期：UI 画成空格而不是"零"，避免最后一周看起来像数据缺失 */
+  future: boolean;
+}
+
+export interface HeatmapData {
+  /** 按行优先排列（每周一列 7 个），长度 = weeks × 7 */
+  cells: HeatCell[];
+  max: number;
+  weeks: number;
+}
+
+/**
+ * 热力图数据：以周一为一列起点，生成连续 weeks 周（含本周）的格子。
+ * 与 computeStats 不同，这里不设"最少记录"门槛 —— 它只是把已有数据画出来，不做结论。
+ */
+export function buildHeatmap(
+  log: FocusLogEntry[],
+  weeks = 12,
+  now = new Date(),
+): HeatmapData {
+  const byDate = new Map<string, { count: number; minutes: number }>();
+  log.forEach((entry) => {
+    const bucket = byDate.get(entry.date) ?? { count: 0, minutes: 0 };
+    bucket.count += 1;
+    bucket.minutes += entry.minutes;
+    byDate.set(entry.date, bucket);
+  });
+
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const todayKey = dayKey(today);
+
+  const start = new Date(today);
+  start.setDate(start.getDate() - ((start.getDay() + 6) % 7) - (weeks - 1) * 7);
+
+  const cells: HeatCell[] = [];
+  let max = 0;
+  for (let offset = 0; offset < weeks * 7; offset += 1) {
+    const date = new Date(start);
+    date.setDate(date.getDate() + offset);
+    const key = dayKey(date);
+    const future = key > todayKey;
+    const bucket = byDate.get(key);
+    const count = future ? 0 : (bucket?.count ?? 0);
+    if (count > max) max = count;
+    cells.push({ date: key, count, minutes: bucket?.minutes ?? 0, future });
+  }
+
+  return { cells, max, weeks };
+}

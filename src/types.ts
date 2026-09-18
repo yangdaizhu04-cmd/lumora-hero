@@ -22,6 +22,13 @@ export interface Scene {
   textColor: string;
   /** 音景层，可叠加（含自适应垫层 `BED`，其响度由专注进度单独驱动） */
   layers: AudioLayerConfig[];
+  /**
+   * 视频不可用时的静态兜底渐变（网络故障 / 省电模式 / 视频加载失败）。
+   * 与 overlay 一起收进 Scene：新增场景只改这一处，不会再漏。
+   */
+  gradient: string;
+  /** 保证文字可读的半透明遮罩 */
+  overlay: string;
 }
 
 export interface PomodoroSettings {
@@ -55,6 +62,8 @@ export interface PomodoroSettings {
   bedLevel: number;
   /** 空间化：环境音左右缓慢游移 */
   spatialSound: boolean;
+  /** 每周目标番茄数（0 表示不设定目标，界面上不显示） */
+  weeklyGoal: number;
 }
 
 /** 今日意图（任务） */
@@ -134,4 +143,17 @@ export interface PhaseMeta {
   label: string;
   /** 阶段结束时展示的引导语 */
   hint: string;
+}
+
+/** 中央提示上的可选操作（例如「撤销」删除任务） */
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
+/** 中央提示。id 变化即视为一条新提示 */
+export interface ToastState {
+  id: number;
+  text: string;
+  action?: ToastAction;
 }

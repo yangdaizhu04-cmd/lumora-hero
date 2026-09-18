@@ -30,6 +30,8 @@ export interface PomodoroController {
   skip: () => void;
   /** 手动切换到指定阶段（会停止当前计时） */
   select: (phase: Phase) => void;
+  /** 给当前阶段续时间（"再来 5 分钟"），运行中 / 暂停中生效 */
+  extend: (minutes: number) => void;
 }
 
 export interface UsePomodoroOptions {
@@ -184,6 +186,13 @@ export function usePomodoro(
     [dispatch],
   );
 
+  const extend = useCallback(
+    (minutes: number) => {
+      dispatch({ type: 'EXTEND', minutes });
+    },
+    [dispatch],
+  );
+
   const progress = state.totalMs > 0 ? 1 - state.remainingMs / state.totalMs : 0;
 
   return {
@@ -201,5 +210,6 @@ export function usePomodoro(
     reset,
     skip,
     select,
+    extend,
   };
 }

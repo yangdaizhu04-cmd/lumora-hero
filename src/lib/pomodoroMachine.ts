@@ -29,6 +29,7 @@ export type PomodoroEvent =
   | { type: 'SKIP'; at: number }
   | { type: 'SELECT'; phase: Phase }
   | { type: 'TICK'; at: number }
+  | { type: 'EXTEND'; minutes: number }
   | { type: 'SETTINGS_CHANGED'; settings: PomodoroSettings };
 
 export interface CompletedPhase {
@@ -196,6 +197,26 @@ export function transition(
         return unchanged(state);
       }
       return { state: enter(state, event.phase, settings, null), completed: null };
+    }
+
+    /**
+     * 延长当前阶段（"再来 5 分钟"）。
+     * totalMs 与 remainingMs 同步加长，这样进度环的比例不会因为延长而跳变；
+     * 只允许在 running / paused 下延长 —— idle 状态该直接去改时长设置。
+     */
+    case 'EXTEND': {
+      if (state.status === 'idle') return unchanged(state);
+      const delta = Math.max(0, Math.round(event.minutes)) * 60_000;
+      if (delta === 0) return unchanged(state);
+      return {
+        state: {
+          ...state,
+          remainingMs: state.remainingMs + delta,
+          totalMs: state.totalMs + delta,
+          endAt: state.endAt === null ? null : state.endAt + delta,
+        },
+        completed: null,
+      };
     }
 
     case 'SETTINGS_CHANGED': {

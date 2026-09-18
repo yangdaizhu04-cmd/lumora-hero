@@ -81,6 +81,10 @@ export class AmbienceEngine {
   private spatialLfo: OscillatorNode | null = null;
   private spatialDepth: GainNode | null = null;
 
+  /** 空闲预热其余场景音层的句柄（见 scheduleWarmup） */
+  private warmHandle: number | null = null;
+  private warmScheduled = false;
+
   private disposed = false;
 
   get isReady(): boolean {
@@ -136,14 +140,17 @@ export class AmbienceEngine {
       }
     }
 
-    this.ensureRegistryLayers();
+    // 先保证当前场景可用（开始 / 切场景是即时的），其余场景等浏览器空闲再预热
+    this.ensureLayers(this.desired);
     this.applySceneLayers(AUDIO.sceneFadeSec);
     this.applySpatial();
     this.applyMasterGain(AUDIO.playFadeInSec);
+    this.scheduleWarmup();
   }
 
   dispose(): void {
     this.stopAll();
+    this.cancelWarmup();
     if (this.duckTimer !== null) window.clearTimeout(this.duckTimer);
     if (this.sleepTimer !== null) window.clearTimeout(this.sleepTimer);
     this.layers.clear();
@@ -156,10 +163,11 @@ export class AmbienceEngine {
 
   // ---------- 场景 ----------
 
-  /** 注册全部场景的音层，解锁后会被预热 */
+  /** 注册全部场景的音层，解锁后按"当前优先、其余空闲预热"加载 */
   setRegistry(configs: AudioLayerConfig[]): void {
     configs.forEach((config) => this.registry.set(config.src, config));
-    if (this.ctx) this.ensureRegistryLayers();
+    // 解锁后又新增了场景：同样交给空闲预热，不在注册这一刻就去下载
+    if (this.ctx) this.scheduleWarmup();
   }
 
   setScene(layers: AudioLayerConfig[], fadeSec = AUDIO.sceneFadeSec): void {
@@ -344,19 +352,58 @@ export class AmbienceEngine {
     return connection.effectiveType !== '2g' && connection.effectiveType !== 'slow-2g';
   }
 
-  private ensureRegistryLayers(): void {
+  /** 立刻为这些音层做准备（只建节点、不发声，音量保持 0） */
+  private ensureLayers(configs: AudioLayerConfig[]): void {
     if (!this.ctx || !this.master) return;
-
-    if (this.shouldPreloadAll()) {
-      this.registry.forEach((config) => {
-        this.ensureLayer(config.src, config.gain, config.pan ?? 0);
-      });
-      return;
-    }
-
-    this.desired.forEach((config) => {
+    configs.forEach((config) => {
       this.ensureLayer(config.src, config.gain, config.pan ?? 0);
     });
+  }
+
+  /**
+   * 空闲时预热"其余场景"的音层。
+   *
+   * 早先是解锁就把 4 个场景一起建好（共 11.5MB 音频），4G 下首屏就吃掉一大块流量。
+   * 现在先保证当前场景即时可用，剩下的等浏览器空闲再默默加载 —— 用户切场景时依然是瞬时的。
+   * 省流 / 2G 环境不预热（只留当前场景）。
+   */
+  private scheduleWarmup(): void {
+    if (!this.ctx || !this.shouldPreloadAll() || this.warmScheduled) return;
+    this.warmScheduled = true;
+
+    const run = () => {
+      this.warmHandle = null;
+      this.warmScheduled = false;
+      if (this.disposed) return;
+
+      const desiredSrcs = new Set(this.desired.map((layer) => layer.src));
+      this.registry.forEach((config) => {
+        if (this.layers.has(config.src)) return;
+        const layer = this.ensureLayer(config.src, config.gain, config.pan ?? 0);
+        // 预热出来的层绝不能发声：非当前场景的层基准音量一律按 0 起步
+        if (layer && !desiredSrcs.has(config.src)) layer.level = 0;
+      });
+    };
+
+    const idle = (
+      window as unknown as {
+        requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+      }
+    ).requestIdleCallback;
+
+    this.warmHandle =
+      typeof idle === 'function' ? idle(run, { timeout: 4000 }) : window.setTimeout(run, 2500);
+  }
+
+  private cancelWarmup(): void {
+    if (this.warmHandle === null) return;
+    const cancelIdle = (
+      window as unknown as { cancelIdleCallback?: (handle: number) => void }
+    ).cancelIdleCallback;
+    if (typeof cancelIdle === 'function') cancelIdle(this.warmHandle);
+    else window.clearTimeout(this.warmHandle);
+    this.warmHandle = null;
+    this.warmScheduled = false;
   }
 
   private ensureLayer(src: string, level: number, pan: number): Layer | null {

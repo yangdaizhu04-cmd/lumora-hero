@@ -34,12 +34,23 @@ export async function detectLowPower(): Promise<boolean> {
   }
 }
 
-/** 供 UI 展示的一句话摘要 */
-export function describeDeviceState(options: {
-  lowPower: boolean;
+/** describeDeviceState 的输入：三种省电来源分开传，才能给出不误导的文案 */
+export interface PowerHintInput {
+  /** 用户在设置里手动开启 */
+  manual: boolean;
+  /** 电量偏低自动开启 */
+  battery: boolean;
+  /** 省流 / 2G 自动开启 */
   saveData: boolean;
-}): string | null {
-  if (options.lowPower) return '电量偏低，已改用静态背景省电';
+}
+
+/**
+ * 供 UI 展示的一句话摘要。
+ * 顺序有意义：用户**手动**打开省电模式时不能说成"电量偏低" —— 那是在给用户编造一个不存在的原因。
+ */
+export function describeDeviceState(options: PowerHintInput): string | null {
+  if (options.manual) return '省电模式已开启：用静态渐变代替背景视频';
+  if (options.battery) return '电量偏低，已自动改用静态背景省电';
   if (options.saveData) return '省流模式，背景视频未加载';
   return null;
 }

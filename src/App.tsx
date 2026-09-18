@@ -13,24 +13,29 @@ import { TaskPanel } from './components/TaskPanel';
 import { TimerDisplay } from './components/TimerDisplay';
 import { TimerRing } from './components/TimerRing';
 import { TopBar } from './components/TopBar';
+import { UpdateBanner } from './components/UpdateBanner';
 import { AUDIO, BED, UX } from './config';
 import { PHASE_META } from './data/phases';
 import {
   DEFAULT_SCENE_INDEX,
   SCENES,
-  sceneForPhase,
   sceneIndexById,
 } from './data/scenes';
+import { useAppBadge } from './hooks/useAppBadge';
 import { useAttention } from './hooks/useAttention';
 import { useAudioEngine } from './hooks/useAudioEngine';
+import { useAutoScene } from './hooks/useAutoScene';
 import { useClockTick } from './hooks/useClockTick';
 import { useFocusLog } from './hooks/useFocusLog';
+import { useFocusMode } from './hooks/useFocusMode';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useMediaSession } from './hooks/useMediaSession';
 import { usePomodoro } from './hooks/usePomodoro';
 import { usePrefersReducedMotion } from './hooks/usePrefersReducedMotion';
 import { useRitual } from './hooks/useRitual';
-import { useTasks, type RolloverInfo } from './hooks/useTasks';
-import { downloadBackup, importBackup } from './lib/backup';
+import { useTasks } from './hooks/useTasks';
+import { clearAllData, downloadBackup, importBackup } from './lib/backup';
+import { downloadLogCsv } from './lib/csv';
 import { DEFAULT_SETTINGS } from './lib/defaults';
 import { describeDeviceState, detectLowPower, detectSaveData } from './lib/device';
 import { buildInsights } from './lib/insights';
@@ -49,13 +54,15 @@ import {
 } from './lib/preset';
 import { buildReview } from './lib/review';
 import type { RestoredPhase } from './lib/session';
-import { STORAGE_KEYS, usePersistentState } from './lib/storage';
+import { countThisWeek } from './lib/stats';
+import { STORAGE_ERROR_EVENT, STORAGE_KEYS, usePersistentState } from './lib/storage';
+import { applyServiceWorkerUpdate, watchServiceWorkerUpdate } from './lib/swUpdate';
 import { formatClock, isNightTime } from './lib/time';
-import type { FocusLogEntry, Phase, PomodoroSettings, Scene } from './types';
+import { SANS, SHORTCUT_HINT } from './lib/ui';
+import type { FocusLogEntry, Phase, PomodoroSettings, Scene, ToastState } from './types';
 
 /** 浮层图已镜像到本地：原图 1.9MB PNG → 195KB WebP，且不再依赖 Figma 临时域名 */
 const OVERLAY_IMAGE = '/overlay.webp';
-const SANS = 'system-ui, sans-serif';
 
 export default function App() {
   // 仅开发环境：渲染计数。用来验证"计时状态只在显示的秒数变化时更新"
@@ -76,8 +83,7 @@ export default function App() {
 
   const [isSettingsOpen, setSettingsOpen] = useState(false);
   const [isTasksOpen, setTasksOpen] = useState(false);
-  const [isFocusMode, setFocusMode] = useState(false);
-  const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
+  const [toast, setToast] = useState<ToastState | null>(null);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [notifyPermission, setNotifyPermission] = useState<NotifyPermission>(() =>
     notificationPermission(),
@@ -86,8 +92,11 @@ export default function App() {
   const [autoLowPower, setAutoLowPower] = useState(false);
   /** 垫层试听中：临时让它发声，不开始计时也能判断强度是否合适 */
   const [bedPreview, setBedPreview] = useState(false);
+  /** 检测到 Service Worker 有新版本 */
+  const [updateReady, setUpdateReady] = useState(false);
 
   const audio = useAudioEngine();
+  const focusMode = useFocusMode();
 
   const activeIndex = ((sceneIndex % SCENES.length) + SCENES.length) % SCENES.length;
   const scene = SCENES[activeIndex];
@@ -101,7 +110,8 @@ export default function App() {
   const saveData = useMemo(() => detectSaveData(), []);
   const lowPower = settings.lowPowerMode || autoLowPower || saveData;
   const deviceHint = describeDeviceState({
-    lowPower: settings.lowPowerMode || autoLowPower,
+    manual: settings.lowPowerMode,
+    battery: autoLowPower,
     saveData,
   });
 
@@ -133,7 +143,7 @@ export default function App() {
   /** 待播放的声化日报（音频未解锁时先存着） */
   const motifRef = useRef<number | null>(null);
 
-  const handleRollover = useCallback((info: RolloverInfo) => {
+  const handleRollover = useCallback((info: { endedDay: string; carried: number }) => {
     setToast({
       id: Date.now(),
       text:
@@ -150,8 +160,12 @@ export default function App() {
   }, []);
 
   const tasks = useTasks({ onRollover: handleRollover });
-  const log = useFocusLog();
+  const log = useFocusLog(clockTick);
   const reducedMotion = usePrefersReducedMotion();
+
+  /** 供稳定回调读取最新任务列表（TaskPanel 是 memo，回调引用必须稳定） */
+  const tasksRef = useRef(tasks);
+  tasksRef.current = tasks;
 
   // ---------- 阶段完成 ----------
   const handlePhaseComplete = useCallback(
@@ -232,6 +246,7 @@ export default function App() {
     reset: resetTimer,
     skip: skipTimer,
     select: selectPhase,
+    extend: extendPhase,
   } = pomodoro;
 
   /** 分心自察：只在专注真正运行时统计，刷新后从存档里的次数接着算 */
@@ -239,15 +254,16 @@ export default function App() {
     phaseState === 'focus' && phaseStatus === 'running',
     restoredAttention,
   );
+  const { count: attentionCount, reset: resetAttention } = attention;
 
   useEffect(() => {
-    syncInterruptions(attention.count);
-  }, [syncInterruptions, attention.count]);
+    syncInterruptions(attentionCount);
+  }, [syncInterruptions, attentionCount]);
 
   // 仅开发环境：便于验证分心计数是否被正确采集（生产构建会被移除）
   if (import.meta.env.DEV) {
     const probe = window as unknown as { __lumoraAttention?: number };
-    probe.__lumoraAttention = attention.count;
+    probe.__lumoraAttention = attentionCount;
   }
 
   // 每次渲染同步"最新值"（refs 是给回调读的，不会触发重渲染）
@@ -256,16 +272,23 @@ export default function App() {
     activeTaskId: tasks.activeTaskId,
     scene,
     night,
-    attention: attention.count,
+    attention: attentionCount,
     totalMs,
     settings,
   };
 
   const review = useMemo(
-    () => buildReview(tasks.archive, log.log, tasks.tasks),
-    [tasks.archive, log.log, tasks.tasks],
+    () => buildReview(tasks.archive, log.log, tasks.tasks, new Date(clockTick)),
+    [tasks.archive, log.log, tasks.tasks, clockTick],
   );
-  const insights = useMemo(() => buildInsights(log.log), [log.log]);
+  const insights = useMemo(
+    () => buildInsights(log.log, new Date(clockTick)),
+    [log.log, clockTick],
+  );
+  const weekCount = useMemo(
+    () => countThisWeek(log.log, new Date(clockTick)),
+    [log.log, clockTick],
+  );
 
   // ---------- 准备倒计时 ----------
   const ritual = useRitual(
@@ -273,14 +296,23 @@ export default function App() {
       startTimer();
     }, [startTimer]),
   );
+  /**
+   * 解构出来使用：依赖数组里放稳定单项，
+   * 而不是把每次渲染都重建的 ritual 对象整个塞进去（那会让 handleToggle 失去稳定性）。
+   */
+  const {
+    count: ritualCount,
+    isActive: ritualActive,
+    start: startRitual,
+    cancel: cancelRitual,
+  } = ritual;
 
   /**
    * 环境音唯一的发声条件：计时真正进行中。
    * 准备倒计时也算"已经按下开始"，此时淡入正好陪用户进入状态；
    * 待机、暂停一律静音（垫层试听是个例外，它本身就是"我要听一下"）。
    */
-  const shouldPlayAmbience =
-    phaseStatus === 'running' || ritual.isActive || bedPreview;
+  const shouldPlayAmbience = phaseStatus === 'running' || ritualActive || bedPreview;
   const playStateRef = useRef(shouldPlayAmbience);
   playStateRef.current = shouldPlayAmbience;
 
@@ -309,8 +341,8 @@ export default function App() {
     unlockAudio();
     wake();
 
-    if (ritual.isActive) {
-      ritual.cancel();
+    if (ritualActive) {
+      cancelRitual();
       return;
     }
 
@@ -322,7 +354,7 @@ export default function App() {
 
     audio.tick(true);
     if (phaseStatus === 'idle' && phaseState === 'focus' && settings.ritualEnabled) {
-      ritual.start(UX.ritualSeconds);
+      startRitual(UX.ritualSeconds);
       return;
     }
     startTimer();
@@ -330,9 +362,9 @@ export default function App() {
     unlockAudio,
     wake,
     audio,
-    ritual.isActive,
-    ritual.cancel,
-    ritual.start,
+    ritualActive,
+    cancelRitual,
+    startRitual,
     phaseStatus,
     phaseState,
     pauseTimer,
@@ -381,13 +413,37 @@ export default function App() {
     [wake, setSceneIndex],
   );
 
+  /**
+   * 切换阶段。
+   *
+   * 两条保护：
+   * 1. 点自己（当前阶段）不做事 —— 否则一次手滑就把进度重置了
+   * 2. 运行中 / 暂停中不允许切阶段 —— 那会静默丢弃当前这一段的时间，是最伤信任的丢失。
+   *    想换阶段请先「重置」。
+   */
   const handleSelectPhase = useCallback(
     (phase: Phase) => {
+      if (phase === phaseState) return;
+
+      if (phaseStatus !== 'idle') {
+        setToast({
+          id: Date.now(),
+          text: `「${PHASE_META[phaseState].label}」进行中 · 先重置再切换阶段`,
+        });
+        return;
+      }
+
       wake();
       selectPhase(phase);
     },
-    [wake, selectPhase],
+    [phaseState, phaseStatus, wake, selectPhase],
   );
+
+  /** 再来 5 分钟：运行中 / 暂停中可直接延长 */
+  const handleExtend = useCallback(() => {
+    extendPhase(5);
+    setToast({ id: Date.now(), text: '已延长 5 分钟' });
+  }, [extendPhase]);
 
   const handleToggleMute = useCallback(() => {
     wake();
@@ -462,9 +518,28 @@ export default function App() {
   }, [clockTick, sleepUntil]);
 
   // ---------- 数据 ----------
+  const { clearLog } = log;
+  const logRef = useRef(log.log);
+  logRef.current = log.log;
+
   const handleExport = useCallback(() => {
     downloadBackup();
     setToast({ id: Date.now(), text: '备份已导出' });
+  }, []);
+
+  const handleExportCsv = useCallback(() => {
+    const exported = downloadLogCsv(logRef.current);
+    setToast({ id: Date.now(), text: exported ? 'CSV 已导出' : '还没有可导出的记录' });
+  }, []);
+
+  const handleClearLog = useCallback(() => {
+    clearLog();
+    setToast({ id: Date.now(), text: '专注记录已清空' });
+  }, [clearLog]);
+
+  const handleClearAll = useCallback(() => {
+    clearAllData();
+    window.location.reload();
   }, []);
 
   const handleImport = useCallback((file: File) => {
@@ -500,6 +575,20 @@ export default function App() {
       window.history.replaceState(null, '', encodePreset(preset));
       setToast({ id: Date.now(), text: '链接已放到地址栏，可手动复制' });
     }
+  }, []);
+
+  /** 删除任务：给一个撤销窗口，而不是弹确认框打断操作 */
+  const handleRemoveTask = useCallback((id: string) => {
+    const api = tasksRef.current;
+    const task = api.tasks.find((item) => item.id === id);
+    api.removeTask(id);
+    if (!task) return;
+
+    setToast({
+      id: Date.now(),
+      text: `已删除「${task.title}」`,
+      action: { label: '撤销', onClick: () => tasksRef.current.undoRemove() },
+    });
   }, []);
 
   // ---------- 音频同步 ----------
@@ -566,21 +655,17 @@ export default function App() {
   ]);
 
   // ---------- 自动场景编排 ----------
-  useEffect(() => {
-    if (!settings.autoScene) return;
-    const index = sceneIndexById(sceneForPhase(phaseState, night));
-    setSceneIndex((prev) => (prev === index ? prev : index));
-  }, [settings.autoScene, phaseState, night, setSceneIndex]);
+  useAutoScene(settings.autoScene, phaseState, night, setSceneIndex);
 
   // ---------- 分心自察 ----------
   // 只在"进入一个全新的专注阶段"时清零；暂停后继续、刷新恢复都不应该丢掉计数
   const lastAttentionPhaseRef = useRef<Phase | null>(phaseState);
   useEffect(() => {
     if (phaseState === 'focus' && lastAttentionPhaseRef.current !== 'focus') {
-      attention.reset();
+      resetAttention();
     }
     lastAttentionPhaseRef.current = phaseState;
-  }, [phaseState, attention.reset]);
+  }, [phaseState, resetAttention]);
 
   // ---------- 窗口标题 ----------
   useEffect(() => {
@@ -614,19 +699,8 @@ export default function App() {
     onNext: mediaNext,
   });
 
-  // ---------- 应用图标角标（安装为 PWA 后可见） ----------
-  useEffect(() => {
-    const nav = navigator as unknown as {
-      setAppBadge?: (value?: number) => Promise<void>;
-      clearAppBadge?: () => Promise<void>;
-    };
-    if (!nav.setAppBadge) return;
-    if (tasks.remainingCount > 0) {
-      void nav.setAppBadge(tasks.remainingCount).catch(() => undefined);
-    } else {
-      void nav.clearAppBadge?.().catch(() => undefined);
-    }
-  }, [tasks.remainingCount]);
+  // ---------- 应用图标角标（安装为 PWA 后可见，显示未完成任务数） ----------
+  useAppBadge(tasks.remainingCount);
 
   // ---------- 分享链接 ----------
   const presetAppliedRef = useRef(false);
@@ -652,100 +726,77 @@ export default function App() {
     setToast({ id: Date.now(), text: '已应用分享的音景配方' });
   }, [setSettings, setSceneIndex]);
 
-  // ---------- 专注模式 ----------
-  const focusModeRef = useRef(false);
-
-  const toggleFocusMode = useCallback(() => {
-    const next = !focusModeRef.current;
-    focusModeRef.current = next;
-    setFocusMode(next);
-
-    if (next) {
-      const request = document.documentElement.requestFullscreen?.();
-      if (request) void request.catch(() => undefined);
-    } else if (document.fullscreenElement) {
-      const exit = document.exitFullscreen?.();
-      if (exit) void exit.catch(() => undefined);
-    }
-  }, []);
-
-  // 用户按 Esc 退出浏览器全屏时，同步退出专注模式
+  // ---------- 桌面快捷方式（manifest.shortcuts）进入时直接打开面板 ----------
+  const panelAppliedRef = useRef(false);
   useEffect(() => {
-    const onFullscreenChange = () => {
-      if (!document.fullscreenElement && focusModeRef.current) {
-        focusModeRef.current = false;
-        setFocusMode(false);
-      }
-    };
-    document.addEventListener('fullscreenchange', onFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
+    if (panelAppliedRef.current) return;
+    panelAppliedRef.current = true;
+
+    const panel = new URLSearchParams(window.location.search).get('panel');
+    if (panel !== 'tasks' && panel !== 'settings') return;
+
+    if (panel === 'tasks') setTasksOpen(true);
+    else setSettingsOpen(true);
+
+    // 清理参数，避免之后每次刷新都重新打开
+    window.history.replaceState(
+      null,
+      '',
+      `${window.location.pathname}${window.location.hash}`,
+    );
   }, []);
+
+  // ---------- 本地存储写入失败（配额 / 隐私模式）----------
+  const storageErrorShownRef = useRef(false);
+  useEffect(() => {
+    const onStorageError = () => {
+      if (storageErrorShownRef.current) return;
+      storageErrorShownRef.current = true;
+      setToast({ id: Date.now(), text: '本地存储写入失败，建议先导出备份' });
+    };
+    window.addEventListener(STORAGE_ERROR_EVENT, onStorageError);
+    return () => window.removeEventListener(STORAGE_ERROR_EVENT, onStorageError);
+  }, []);
+
+  // ---------- Service Worker 更新 ----------
+  useEffect(() => watchServiceWorkerUpdate(() => setUpdateReady(true)), []);
+
+  // ---------- 抽屉打开时把背景设为 inert（键盘 / 读屏不再跑到屏幕后面）----------
+  const contentRef = useRef<HTMLDivElement>(null);
+  const panelOpen = isSettingsOpen || isTasksOpen;
+  useEffect(() => {
+    const element = contentRef.current as (HTMLDivElement & { inert?: boolean }) | null;
+    if (!element) return;
+    element.inert = panelOpen;
+  }, [panelOpen]);
 
   // ---------- 键盘快捷键 ----------
-  const shortcutRef = useRef<(event: KeyboardEvent) => void>(() => undefined);
-  shortcutRef.current = (event: KeyboardEvent) => {
-    const target = event.target as HTMLElement | null;
-    if (
-      target &&
-      (target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.isContentEditable)
-    ) {
-      return;
-    }
-
-    // 抽屉内部保留原生行为（开关/按钮用空格激活），全局空格只服务计时器
-    if (event.code === 'Space' && target?.closest('aside')) return;
-
-    switch (event.code) {
-      case 'Space':
-        event.preventDefault();
-        handleToggle();
-        break;
-      case 'KeyR':
-        resetTimer();
-        break;
-      case 'KeyS':
-        skipTimer();
-        break;
-      case 'KeyM':
-        handleToggleMute();
-        break;
-      case 'KeyT':
-        setTasksOpen((prev) => !prev);
-        break;
-      case 'KeyF':
-        toggleFocusMode();
-        break;
-      case 'Escape':
-        if (focusModeRef.current) {
-          toggleFocusMode();
-        } else {
-          closeSettings();
-          closeTasks();
-        }
-        break;
-      default: {
-        if (/^Digit[1-9]$/.test(event.code)) {
-          const index = Number(event.code.slice(5)) - 1;
-          if (index < SCENES.length) handleSelectScene(index);
-        }
+  // 处理函数每次渲染重建也没关系：hook 内部用 ref 保存最新值，监听器只挂一次
+  useKeyboardShortcuts({
+    toggleTimer: handleToggle,
+    resetTimer,
+    skipPhase: skipTimer,
+    toggleMute: handleToggleMute,
+    toggleTasks: () => setTasksOpen((prev) => !prev),
+    toggleFocusMode: focusMode.toggle,
+    escape: () => {
+      if (focusMode.activeRef.current) {
+        focusMode.toggle();
+        return;
       }
-    }
-  };
-
-  useEffect(() => {
-    const listener = (event: KeyboardEvent) => shortcutRef.current(event);
-    window.addEventListener('keydown', listener);
-    return () => window.removeEventListener('keydown', listener);
-  }, []);
+      closeSettings();
+      closeTasks();
+    },
+    selectScene: handleSelectScene,
+    sceneCount: SCENES.length,
+  });
 
   // ---------- 渲染 ----------
   const breathing =
     !reducedMotion && phaseState !== 'focus' && phaseStatus === 'running';
-  const showChrome = !isFocusMode;
+  const showChrome = !focusMode.isFocusMode;
 
-  const statusText = ritual.isActive
+  const statusText = ritualActive
     ? '准备中'
     : phaseStatus === 'running'
       ? PHASE_META[phaseState].label
@@ -777,6 +828,7 @@ export default function App() {
       />
 
       <div
+        ref={contentRef}
         className="relative z-[2] flex h-full flex-col"
         style={{
           color: scene.textColor,
@@ -842,10 +894,14 @@ export default function App() {
 
           <ControlBar
             isRunning={phaseStatus === 'running'}
-            isPreparing={ritual.isActive}
+            isPreparing={ritualActive}
+            isPaused={phaseStatus === 'paused'}
+            startLabel={phaseState === 'focus' ? '开始专注' : '开始休息'}
+            canExtend={phaseStatus !== 'idle'}
             onToggle={handleToggle}
             onReset={resetTimer}
             onSkip={skipTimer}
+            onExtend={handleExtend}
           />
 
           {tasks.activeTask && (
@@ -858,8 +914,7 @@ export default function App() {
             }`}
             style={{ fontFamily: SANS }}
           >
-            Space 开始/暂停 · R 重置 · S 跳过 · 1–4 切换场景 · M 静音 · T 今日意图 · F
-            专注模式
+            {SHORTCUT_HINT}
           </p>
         </main>
 
@@ -868,7 +923,11 @@ export default function App() {
             showChrome ? 'opacity-100' : 'pointer-events-none opacity-0'
           }`}
         >
-          <StatsBar stats={log.stats} />
+          <StatsBar
+            stats={log.stats}
+            weekCount={weekCount}
+            weeklyGoal={settings.weeklyGoal}
+          />
           <SceneSwitcher
             scenes={SCENES}
             activeIndex={activeIndex}
@@ -878,7 +937,7 @@ export default function App() {
           />
         </footer>
 
-        {isFocusMode && (
+        {focusMode.isFocusMode && (
           <p
             className="absolute bottom-4 left-1/2 -translate-x-1/2 text-[11px] opacity-25 transition-opacity duration-500 hover:opacity-60"
             style={{ fontFamily: SANS }}
@@ -888,7 +947,7 @@ export default function App() {
         )}
       </div>
 
-      <RitualOverlay count={ritual.count} />
+      <RitualOverlay count={ritualCount} />
       <PhaseToast toast={toast} onDismiss={dismissToast} />
 
       <TaskPanel
@@ -896,11 +955,13 @@ export default function App() {
         tasks={tasks.tasks}
         review={review}
         insights={insights}
+        log={log.log}
+        now={clockTick}
         activeTaskId={tasks.activeTaskId}
         onClose={closeTasks}
         onAdd={tasks.addTask}
         onToggleDone={tasks.toggleDone}
-        onRemove={tasks.removeTask}
+        onRemove={handleRemoveTask}
         onSetActive={tasks.setActiveTask}
         onClearCompleted={tasks.clearCompleted}
       />
@@ -912,15 +973,25 @@ export default function App() {
         deviceHint={deviceHint}
         sleepRemainingMs={sleepUntil ? Math.max(0, sleepUntil - clockTick) : 0}
         bedPreview={bedPreview}
+        logCount={log.log.length}
         onChange={handleSettingsChange}
         onPreviewBed={handlePreviewBed}
         onNotificationsChange={handleNotificationsChange}
         onStartSleep={handleStartSleep}
         onCancelSleep={handleCancelSleep}
         onExport={handleExport}
+        onExportCsv={handleExportCsv}
         onImport={handleImport}
         onShare={handleShare}
+        onClearLog={handleClearLog}
+        onClearAll={handleClearAll}
         onClose={closeSettings}
+      />
+
+      <UpdateBanner
+        visible={updateReady}
+        onReload={applyServiceWorkerUpdate}
+        onDismiss={() => setUpdateReady(false)}
       />
     </section>
   );

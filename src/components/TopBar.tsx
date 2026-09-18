@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import { ListTodo, Settings as SettingsIcon } from 'lucide-react';
 import { VolumeControl } from './VolumeControl';
+import { SANS } from '../lib/ui';
 
 interface Props {
   remainingTasks: number;
@@ -11,8 +12,6 @@ interface Props {
   onToggleMute: () => void;
   onOpenSettings: () => void;
 }
-
-const SANS = 'system-ui, sans-serif';
 
 /** 顶栏：品牌 + 今日意图 + 音量 + 设置 */
 function TopBarComponent({

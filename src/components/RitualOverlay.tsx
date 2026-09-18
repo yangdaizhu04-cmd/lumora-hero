@@ -1,3 +1,5 @@
+import { SANS } from '../lib/ui';
+
 interface Props {
   count: number | null;
 }
@@ -22,7 +24,7 @@ export function RitualOverlay({ count }: Props) {
       </span>
       <span
         className="text-[11px] uppercase tracking-[0.32em] text-white/70"
-        style={{ fontFamily: 'system-ui, sans-serif' }}
+        style={{ fontFamily: SANS }}
       >
         准备开始
       </span>

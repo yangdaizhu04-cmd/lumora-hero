@@ -1,7 +1,8 @@
-import { memo, useEffect, useRef, type ReactNode } from 'react';
-import { Download, Link2, Moon, Upload, X } from 'lucide-react';
+import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Download, FileSpreadsheet, Link2, Moon, Trash2, Upload, X } from 'lucide-react';
 import { clamp, formatRemainingMinutes } from '../lib/time';
 import { DEFAULT_SETTINGS } from '../lib/defaults';
+import { SANS, SHORTCUT_HINT } from '../lib/ui';
 import type { NotifyPermission } from '../lib/notify';
 import type { PomodoroSettings } from '../types';
 
@@ -9,25 +10,31 @@ interface Props {
   open: boolean;
   settings: PomodoroSettings;
   notifyPermission: NotifyPermission;
-  /** 设备相关的提示（低电量 / 省流） */
+  /** 设备相关的提示（低电量 / 省流 / 手动省电） */
   deviceHint: string | null;
   /** 睡眠定时剩余毫秒，0 表示未启用 */
   sleepRemainingMs: number;
   /** 垫层试听进行中 */
   bedPreview: boolean;
+  /** 已记录的专注条数（决定 CSV 导出是否可用） */
+  logCount: number;
   onChange: (patch: Partial<PomodoroSettings>) => void;
   onPreviewBed: () => void;
   onNotificationsChange: (enabled: boolean) => void;
   onStartSleep: (minutes: number) => void;
   onCancelSleep: () => void;
   onExport: () => void;
+  onExportCsv: () => void;
   onImport: (file: File) => void;
   onShare: () => void;
+  onClearLog: () => void;
+  onClearAll: () => void;
   onClose: () => void;
 }
 
-const SANS = 'system-ui, sans-serif';
 const SLEEP_OPTIONS = [15, 30, 60];
+/** 危险操作的两步确认窗口：第一次点进入"待确认"，窗口内再点一次才执行 */
+const CONFIRM_WINDOW_MS = 5000;
 
 function SettingsDrawerComponent({
   open,
@@ -36,26 +43,51 @@ function SettingsDrawerComponent({
   deviceHint,
   sleepRemainingMs,
   bedPreview,
+  logCount,
   onChange,
   onPreviewBed,
   onNotificationsChange,
   onStartSleep,
   onCancelSleep,
   onExport,
+  onExportCsv,
   onImport,
   onShare,
+  onClearLog,
+  onClearAll,
   onClose,
 }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  // Esc 由 App 的全局快捷键统一处理（此前同一次按键会被两个监听器各处理一遍）
+  const [pendingClear, setPendingClear] = useState<'log' | 'all' | null>(null);
+  const confirmTimerRef = useRef<number | null>(null);
+
+  const clearConfirmTimer = useCallback(() => {
+    if (confirmTimerRef.current !== null) {
+      window.clearTimeout(confirmTimerRef.current);
+      confirmTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => clearConfirmTimer, [clearConfirmTimer]);
+
+  /** 危险操作走两步确认：第一次点进入待确认，窗口内再点一次才真的执行 */
+  const handleClear = (kind: 'log' | 'all') => {
+    if (pendingClear === kind) {
+      clearConfirmTimer();
+      setPendingClear(null);
+      if (kind === 'log') onClearLog();
+      else onClearAll();
+      return;
+    }
+    setPendingClear(kind);
+    clearConfirmTimer();
+    confirmTimerRef.current = window.setTimeout(() => {
+      confirmTimerRef.current = null;
+      setPendingClear(null);
+    }, CONFIRM_WINDOW_MS);
+  };
 
   const notifyDisabled =
     notifyPermission === 'unsupported' || notifyPermission === 'denied';
@@ -86,6 +118,8 @@ function SettingsDrawerComponent({
         }}
         aria-hidden={!open}
         aria-label="设置"
+        role="dialog"
+        aria-modal="true"
       >
         <div className="flex items-center justify-between px-6 py-6">
           <h2 className="text-base font-medium">设置</h2>
@@ -138,6 +172,16 @@ function SettingsDrawerComponent({
               unit="个番茄"
               onChange={(value) => onChange({ longBreakInterval: value })}
             />
+            <Stepper
+              label="每周目标"
+              value={settings.weeklyGoal}
+              min={0}
+              max={100}
+              step={5}
+              unit="个番茄"
+              hint="0 表示不设定，统计条上不显示"
+              onChange={(value) => onChange({ weeklyGoal: value })}
+            />
             <Row label="自动开始下一段">
               <Toggle
                 checked={settings.autoStartNext}
@@ -180,10 +224,13 @@ function SettingsDrawerComponent({
                   min={0}
                   max={100}
                   value={Math.round(settings.bedLevel * 100)}
-                  onChange={(event) => {
-                    onChange({ bedLevel: Number(event.target.value) / 100 });
-                    onPreviewBed();
-                  }}
+                  // 拖动时只改数值（写盘已去抖）；松手 / 键盘调整时才试听 ——
+                  // 否则一次拖动会把 8 秒试听窗反复重启
+                  onChange={(event) =>
+                    onChange({ bedLevel: Number(event.target.value) / 100 })
+                  }
+                  onPointerUp={onPreviewBed}
+                  onKeyUp={onPreviewBed}
                   aria-label="垫层强度"
                   className="range-glass w-20 sm:w-24"
                 />
@@ -318,14 +365,60 @@ function SettingsDrawerComponent({
                 导入备份
               </button>
             </div>
-            <button
-              type="button"
-              onClick={onShare}
-              className="liquid-glass mt-2 flex w-full items-center justify-center gap-1.5 rounded-full py-2.5 text-xs transition-opacity hover:opacity-75"
-            >
-              <Link2 className="h-3.5 w-3.5" />
-              复制当前音景分享链接
-            </button>
+
+            <div className="mt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={onExportCsv}
+                disabled={logCount === 0}
+                className="liquid-glass flex flex-1 items-center justify-center gap-1.5 rounded-full py-2.5 text-xs transition-opacity hover:opacity-75 disabled:opacity-35"
+              >
+                <FileSpreadsheet className="h-3.5 w-3.5" />
+                导出 CSV
+              </button>
+              <button
+                type="button"
+                onClick={onShare}
+                className="liquid-glass flex flex-1 items-center justify-center gap-1.5 rounded-full py-2.5 text-xs transition-opacity hover:opacity-75"
+              >
+                <Link2 className="h-3.5 w-3.5" />
+                分享音景
+              </button>
+            </div>
+
+            <p className="mt-3 text-[11px] leading-snug text-white/40">
+              已有 {logCount} 条专注记录。备份是完整 JSON（可换设备还原），CSV 便于在
+              Excel / Notion 里继续分析。
+            </p>
+
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={() => handleClear('log')}
+                disabled={logCount === 0}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-full py-2.5 text-xs transition-colors duration-300 disabled:opacity-35"
+                style={{
+                  background:
+                    pendingClear === 'log' ? 'rgba(214,88,68,0.82)' : 'rgba(255,255,255,0.06)',
+                }}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                {pendingClear === 'log' ? '再点一次确认' : '清空专注记录'}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleClear('all')}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-full py-2.5 text-xs transition-colors duration-300"
+                style={{
+                  background:
+                    pendingClear === 'all' ? 'rgba(214,88,68,0.82)' : 'rgba(255,255,255,0.06)',
+                }}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                {pendingClear === 'all' ? '再点一次确认' : '清除全部数据'}
+              </button>
+            </div>
+
             <input
               ref={fileRef}
               type="file"
@@ -348,8 +441,7 @@ function SettingsDrawerComponent({
           </button>
 
           <p className="mt-6 text-xs leading-relaxed text-white/45">
-            快捷键：Space 开始/暂停 · R 重置 · S 跳过 · 1–4 切换场景 · M 静音 · T
-            今日意图 · F 专注模式
+            快捷键：{SHORTCUT_HINT}
           </p>
         </div>
       </aside>
@@ -398,13 +490,19 @@ interface StepperProps {
   max: number;
   step: number;
   unit: string;
+  hint?: string;
   onChange: (value: number) => void;
 }
 
-function Stepper({ label, value, min, max, step, unit, onChange }: StepperProps) {
+function Stepper({ label, value, min, max, step, unit, hint, onChange }: StepperProps) {
   return (
     <div className="flex items-center justify-between border-b border-white/[0.06] py-4 last:border-b-0">
-      <span className="text-sm">{label}</span>
+      <div className="min-w-0">
+        <div className="text-sm">{label}</div>
+        {hint && (
+          <div className="mt-0.5 text-[11px] leading-snug text-white/40">{hint}</div>
+        )}
+      </div>
       <div className="flex items-center gap-2" role="group" aria-label={label}>
         <button
           type="button"

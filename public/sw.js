@@ -6,15 +6,22 @@
  * - 同源静态资源（音频 / 字体 / 构建产物 / 图片）：缓存优先（体积大、内容不变）
  * - 跨域请求（背景视频 CDN）：完全交给浏览器 HTTP 缓存，避免把几十 MB 的视频塞进 Cache Storage
  *
+ * 更新：**不再自动 skipWaiting**。自动接管会让正在使用的页面继续跑旧代码（用户毫无感知，
+ * 可能几周不刷新）；现在由页面提示"新版本已就绪"，用户点击后才 skipWaiting 并重载
+ * （见 src/lib/swUpdate.ts）。
+ *
  * 注意：换版本时要同时改 CACHE 名称，activate 阶段会清理旧缓存。
  */
-const CACHE = 'lumora-v1';
+const CACHE = 'lumora-v2';
 
 const APP_SHELL = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
   '/icon.svg',
+  '/icon-192.png',
+  '/icon-512.png',
+  '/apple-touch-icon.png',
   '/overlay.webp',
   '/fonts/instrument-serif-latin-400-normal.woff2',
   '/fonts/instrument-serif-latin-400-italic.woff2',
@@ -25,7 +32,6 @@ self.addEventListener('install', (event) => {
     caches
       .open(CACHE)
       .then((cache) => cache.addAll(APP_SHELL))
-      .then(() => self.skipWaiting())
       .catch(() => undefined),
   );
 });
@@ -39,6 +45,13 @@ self.addEventListener('activate', (event) => {
       )
       .then(() => self.clients.claim()),
   );
+});
+
+// 页面确认后才接管，避免"旧页面 + 新 SW"的资源错配
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 async function cacheFirst(request) {

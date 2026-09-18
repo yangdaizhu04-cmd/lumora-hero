@@ -1,16 +1,22 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import { Check, Circle, Plus, Sparkles, Target, Trash2, X } from 'lucide-react';
+import { Heatmap } from './Heatmap';
 import { formatDayLabel, sumReview } from '../lib/review';
 import { formatMinutes } from '../lib/stats';
 import { clamp } from '../lib/time';
+import { SANS } from '../lib/ui';
 import type { Insight } from '../lib/insights';
-import type { ReviewEntry, Task } from '../types';
+import type { FocusLogEntry, ReviewEntry, Task } from '../types';
 
 interface Props {
   open: boolean;
   tasks: Task[];
   review: ReviewEntry[];
   insights: Insight[];
+  /** 热力图原始数据（按天聚合在组件内做） */
+  log: FocusLogEntry[];
+  /** 分钟级时钟，与统计保持同一时间基准 */
+  now: number;
   activeTaskId: string | null;
   onClose: () => void;
   onAdd: (title: string, estimate: number) => void;
@@ -20,8 +26,6 @@ interface Props {
   onClearCompleted: () => void;
 }
 
-const SANS = 'system-ui, sans-serif';
-
 type Tab = 'today' | 'review';
 
 function TaskPanelComponent({
@@ -29,6 +33,8 @@ function TaskPanelComponent({
   tasks,
   review,
   insights,
+  log,
+  now,
   activeTaskId,
   onClose,
   onAdd,
@@ -42,20 +48,14 @@ function TaskPanelComponent({
   const [estimate, setEstimate] = useState(1);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Esc 由 App 的全局快捷键统一处理（此前面板内也监听一次，同一次按键会被处理两遍）
   useEffect(() => {
     if (!open) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
     const focusTimer = window.setTimeout(() => {
       if (tab === 'today') inputRef.current?.focus();
     }, 300);
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      window.clearTimeout(focusTimer);
-    };
-  }, [open, onClose, tab]);
+    return () => window.clearTimeout(focusTimer);
+  }, [open, tab]);
 
   const submit = () => {
     if (!title.trim()) return;
@@ -96,6 +96,8 @@ function TaskPanelComponent({
         }}
         aria-hidden={!open}
         aria-label="今日意图"
+        role="dialog"
+        aria-modal="true"
       >
         <div className="flex items-center justify-between px-6 py-6">
           <h2 className="text-base font-medium">今日意图</h2>
@@ -285,7 +287,7 @@ function TaskPanelComponent({
           </>
         ) : (
           <div className="mt-4 flex-1 overflow-y-auto px-5 pb-6">
-            <ReviewList review={review} insights={insights} />
+            <ReviewList review={review} insights={insights} log={log} now={now} />
           </div>
         )}
       </aside>
@@ -293,13 +295,17 @@ function TaskPanelComponent({
   );
 }
 
-/** 按天回顾：洞察 + 每日任务快照 + 专注数据 */
+/** 按天回顾：洞察 + 热力图 + 每日任务快照 + 专注数据 */
 function ReviewList({
   review,
   insights,
+  log,
+  now,
 }: {
   review: ReviewEntry[];
   insights: Insight[];
+  log: FocusLogEntry[];
+  now: number;
 }) {
   if (review.length === 0) {
     return (
@@ -315,6 +321,8 @@ function ReviewList({
 
   return (
     <div className="space-y-3">
+      <Heatmap log={log} now={now} />
+
       {insights.length > 0 && (
         <div className="space-y-2">
           {insights.map((insight) => (

@@ -7,6 +7,7 @@
   "display": "standalone",
   "background_color": "#0d1620",
   "theme_color": "#0d1620",
+  "lang": "zh-CN",
   "icons": [
     {
       "src": "/icon.svg",
@@ -15,10 +16,36 @@
       "purpose": "any"
     },
     {
-      "src": "/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "今日意图",
+      "short_name": "任务",
+      "description": "打开今日意图面板",
+      "url": "/?panel=tasks"
+    },
+    {
+      "name": "设置",
+      "short_name": "设置",
+      "description": "打开设置面板",
+      "url": "/?panel=settings"
     }
   ]
 }

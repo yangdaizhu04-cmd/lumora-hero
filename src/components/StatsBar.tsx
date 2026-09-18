@@ -1,15 +1,18 @@
 import { memo } from 'react';
 import { formatMinutes } from '../lib/stats';
+import { SANS } from '../lib/ui';
 import type { FocusStats } from '../types';
 
 interface Props {
   stats: FocusStats;
+  /** 本周（周一起算）完成的番茄数 */
+  weekCount: number;
+  /** 每周目标，0 表示不设定（不显示） */
+  weeklyGoal: number;
 }
 
-const SANS = 'system-ui, sans-serif';
-
-/** 今日专注数据 + 近 7 天迷你柱状图 */
-function StatsBarComponent({ stats }: Props) {
+/** 今日专注数据 + 本周目标 + 近 7 天迷你柱状图 */
+function StatsBarComponent({ stats, weekCount, weeklyGoal }: Props) {
   const max = Math.max(1, ...stats.last7.map((day) => day.count));
   const barHeight = (count: number) => 3 + Math.round((count / max) * 13);
 
@@ -30,6 +33,15 @@ function StatsBarComponent({ stats }: Props) {
       </span>
       <span className="opacity-30">|</span>
       <span className="whitespace-nowrap tabular-nums">连续 {stats.streak} 天</span>
+
+      {weeklyGoal > 0 && (
+        <>
+          <span className="hidden opacity-30 sm:inline">|</span>
+          <span className="hidden whitespace-nowrap tabular-nums sm:inline">
+            本周 {weekCount}/{weeklyGoal}
+          </span>
+        </>
+      )}
 
       <div className="hidden items-end gap-[3px] pl-1 sm:flex" aria-hidden="true">
         {stats.last7.map((day) => (

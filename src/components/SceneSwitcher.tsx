@@ -1,5 +1,6 @@
 import { memo, useState } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
+import { SANS } from '../lib/ui';
 import type { Scene } from '../types';
 
 interface Props {
@@ -41,7 +42,7 @@ function SceneSwitcherComponent({
               title={soundHint}
               className="flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b pb-1 text-xs tracking-wide sm:text-sm"
               style={{
-                fontFamily: 'system-ui, sans-serif',
+                fontFamily: SANS,
                 color: 'inherit',
                 opacity,
                 borderColor: isActive ? 'currentColor' : 'transparent',

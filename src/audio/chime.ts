@@ -17,6 +17,18 @@ const BREAK_END = [NOTE.C5, NOTE.E5, NOTE.G5, NOTE.C6];
 
 export type ChimeKind = 'focusEnd' | 'breakEnd';
 
+/** 最后一个音结束后释放总线：常驻使用下不该让节点在音频图里慢慢堆积 */
+function releaseBus(ctx: AudioContext, bus: GainNode, until: number): void {
+  const delayMs = Math.max(0, (until - ctx.currentTime) * 1000) + 300;
+  window.setTimeout(() => {
+    try {
+      bus.disconnect();
+    } catch {
+      /* 上下文已关闭 */
+    }
+  }, delayMs);
+}
+
 export function playChime(ctx: AudioContext, kind: ChimeKind): void {
   const notes = kind === 'focusEnd' ? FOCUS_END : BREAK_END;
   const startAt = ctx.currentTime + 0.04;
@@ -26,9 +38,10 @@ export function playChime(ctx: AudioContext, kind: ChimeKind): void {
   bus.gain.value = 0.9;
   bus.connect(ctx.destination);
 
-  notes.forEach((freq, index) => {
-    bell(ctx, bus, freq, startAt + index * 0.17, 2.4, 0.2);
-  });
+  const stops = notes.map((freq, index) =>
+    bell(ctx, bus, freq, startAt + index * 0.17, 2.4, 0.2),
+  );
+  releaseBus(ctx, bus, Math.max(...stops));
 }
 
 /** 单次点击反馈（开始/暂停）用的极短轻音 */
@@ -36,7 +49,8 @@ export function playTick(ctx: AudioContext, up: boolean): void {
   const bus = ctx.createGain();
   bus.gain.value = 0.35;
   bus.connect(ctx.destination);
-  bell(ctx, bus, up ? NOTE.E5 : NOTE.C5, ctx.currentTime + 0.01, 0.5, 0.12);
+  const stopAt = bell(ctx, bus, up ? NOTE.E5 : NOTE.C5, ctx.currentTime + 0.01, 0.5, 0.12);
+  releaseBus(ctx, bus, stopAt);
 }
 
 const MOTIF_NOTES = [NOTE.C5, NOTE.E5, NOTE.G5, NOTE.C6, NOTE.E5 * 2, NOTE.G5 * 2];
@@ -53,9 +67,10 @@ export function playDayMotif(ctx: AudioContext, count: number): void {
   bus.gain.value = 0.5;
   bus.connect(ctx.destination);
 
-  notes.forEach((freq, index) => {
-    bell(ctx, bus, freq, startAt + index * 0.16, 1.8, 0.15);
-  });
+  const stops = notes.map((freq, index) =>
+    bell(ctx, bus, freq, startAt + index * 0.16, 1.8, 0.15),
+  );
+  releaseBus(ctx, bus, Math.max(...stops));
 }
 
 function bell(
@@ -65,7 +80,7 @@ function bell(
   startAt: number,
   duration: number,
   level: number,
-): void {
+): number {
   const fundamental = ctx.createOscillator();
   fundamental.type = 'sine';
   fundamental.frequency.value = freq;
@@ -91,4 +106,17 @@ function bell(
   fundamental.stop(stopAt);
   partial.start(startAt);
   partial.stop(stopAt);
+
+  // 发声结束后断开这一支路：一天几十次提示音，节点不该常驻音频图
+  partial.onended = () => {
+    try {
+      fundamental.disconnect();
+      partialGain.disconnect();
+      envelope.disconnect();
+    } catch {
+      /* 上下文已关闭 */
+    }
+  };
+
+  return stopAt;
 }

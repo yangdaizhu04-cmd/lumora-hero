@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { SANS } from '../lib/ui';
 
 /** 4-7-8 呼吸法：吸气 4s → 屏息 7s → 呼气 8s，一个周期 19s */
 const CYCLE_SECONDS = 19;
@@ -47,7 +48,7 @@ export function BreathingGuide({ active }: Props) {
   return (
     <p
       className="mt-3 text-[10px] tracking-[0.28em] uppercase opacity-50 sm:text-[11px]"
-      style={{ fontFamily: 'system-ui, sans-serif' }}
+      style={{ fontFamily: SANS }}
       aria-live="off"
     >
       {LABEL[stage]}

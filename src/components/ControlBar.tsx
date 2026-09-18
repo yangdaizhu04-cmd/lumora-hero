@@ -5,9 +5,16 @@ interface Props {
   isRunning: boolean;
   /** 开始前的准备倒计时进行中 */
   isPreparing: boolean;
+  /** 已暂停（主按钮应该说「继续」而不是「开始专注」） */
+  isPaused: boolean;
+  /** 空闲时主按钮的说法：开始专注 / 开始休息 */
+  startLabel: string;
+  /** 运行中 / 暂停中才允许延长 */
+  canExtend: boolean;
   onToggle: () => void;
   onReset: () => void;
   onSkip: () => void;
+  onExtend: () => void;
 }
 
 const SANS = 'system-ui, sans-serif';
@@ -15,12 +22,18 @@ const SANS = 'system-ui, sans-serif';
 function ControlBarComponent({
   isRunning,
   isPreparing,
+  isPaused,
+  startLabel,
+  canExtend,
   onToggle,
   onReset,
   onSkip,
+  onExtend,
 }: Props) {
+  const toggleLabel = isPreparing ? '取消准备' : isRunning ? '暂停' : isPaused ? '继续' : startLabel;
+
   return (
-    <div className="mt-8 flex items-center justify-center gap-4 sm:gap-5">
+    <div className="mt-8 flex items-center justify-center gap-3 sm:gap-5">
       <button
         type="button"
         onClick={onReset}
@@ -35,7 +48,7 @@ function ControlBarComponent({
       <button
         type="button"
         onClick={onToggle}
-        aria-label={isPreparing ? '取消准备' : isRunning ? '暂停' : '开始专注'}
+        aria-label={toggleLabel}
         title="开始 / 暂停 (Space)"
         className="flex h-16 w-16 items-center justify-center rounded-full bg-white text-[#182C41] shadow-[0_8px_32px_rgba(0,0,0,0.28)] transition-transform duration-300 hover:scale-[1.04] active:scale-[0.98] sm:h-[72px] sm:w-[72px]"
       >
@@ -58,6 +71,20 @@ function ControlBarComponent({
       >
         <SkipForward className="h-4 w-4" />
       </button>
+
+      {/* 延长：番茄钟最常见的诉求（"这题快做完了，再来 5 分钟"），只在计时中显示 */}
+      {canExtend && (
+        <button
+          type="button"
+          onClick={onExtend}
+          aria-label="延长 5 分钟"
+          title="延长 5 分钟"
+          className="liquid-glass flex h-11 w-11 items-center justify-center rounded-full text-[11px] tabular-nums transition-opacity duration-300 hover:opacity-70 sm:h-12 sm:w-12 sm:text-xs"
+          style={{ fontFamily: SANS }}
+        >
+          +5
+        </button>
+      )}
     </div>
   );
 }
