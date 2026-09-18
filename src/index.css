@@ -1,0 +1,163 @@
+@import "tailwindcss";
+
+html,
+body {
+  font-family: 'Instrument Serif', serif;
+  margin: 0;
+  padding: 0;
+  background-color: #000;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+/* ---------- Liquid Glass ---------- */
+.liquid-glass {
+  background: rgba(255, 255, 255, 0.01);
+  background-blend-mode: luminosity;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  border: none;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.1);
+  position: relative;
+  overflow: hidden;
+}
+
+.liquid-glass::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.4px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.45) 0%,
+    rgba(255, 255, 255, 0.15) 20%,
+    rgba(255, 255, 255, 0) 40%,
+    rgba(255, 255, 255, 0) 60%,
+    rgba(255, 255, 255, 0.15) 80%,
+    rgba(255, 255, 255, 0.45) 100%
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* ---------- Train bob animation (transparent PNG overlay) ---------- */
+@keyframes train-bob {
+  0% {
+    transform: translateY(0) scale(1.03);
+  }
+  50% {
+    transform: translateY(-6px) scale(1.03);
+  }
+  100% {
+    transform: translateY(0) scale(1.03);
+  }
+}
+
+.train-bob {
+  transform: translateY(0) scale(1.03);
+  animation: train-bob 3s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* ---------- Volume slider ---------- */
+.range-glass {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 3px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.5;
+  cursor: pointer;
+  transition: opacity 300ms ease;
+}
+
+.range-glass:hover {
+  opacity: 0.8;
+}
+
+.range-glass::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+}
+
+.range-glass::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+}
+
+/* ---------- Misc ---------- */
+input::placeholder {
+  color: currentColor;
+  opacity: 0.55;
+}
+
+input:focus {
+  outline: none;
+}
+
+/* ---------- Breathing guide (4-7-8 呼吸法) ---------- */
+@keyframes breathe-478 {
+  0% {
+    transform: scale(1);
+  }
+  /* 吸气 4s */
+  21.05% {
+    transform: scale(1.055);
+  }
+  /* 屏息 7s */
+  57.89% {
+    transform: scale(1.055);
+  }
+  /* 呼气 8s */
+  100% {
+    transform: scale(1);
+  }
+}
+
+.breathe-478 {
+  animation: breathe-478 19s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* ---------- Hide scrollbar (场景切换器横向滚动用) ---------- */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* ---------- Keyboard focus ---------- */
+:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+/* ---------- Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .train-bob,
+  .breathe-478 {
+    animation: none;
+  }
+}
