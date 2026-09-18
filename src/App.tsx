@@ -28,7 +28,8 @@ import {
   showNotification,
   type NotifyPermission,
 } from './lib/notify';
-import { PHASE_META, type Phase, type PomodoroSettings } from './types';
+import { PHASE_META } from './data/phases';
+import type { Phase, PomodoroSettings } from './types';
 
 const OVERLAY_PNG =
   'https://soft-zoom-63098134.figma.site/_assets/v11/0b4a435b2df2747593c43d7a1c9b4578f7d8d90c.png';

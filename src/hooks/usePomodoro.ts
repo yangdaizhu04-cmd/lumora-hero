@@ -1,5 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { minutesToMs } from '../lib/time';
+import { TIMER } from '../config';
+import {
+  transition,
+  type PomodoroEvent,
+  type PomodoroState,
+} from '../lib/pomodoroMachine';
+import {
+  rehydrateSession,
+  serializeSession,
+  type RestoredPhase,
+} from '../lib/session';
+import { readStorage, STORAGE_KEYS, writeStorage } from '../lib/storage';
 import type { Phase, PhaseStatus, PomodoroSettings } from '../types';
 
 export interface PomodoroController {
@@ -21,106 +32,89 @@ export interface PomodoroController {
   select: (phase: Phase) => void;
 }
 
-function durationMs(phase: Phase, settings: PomodoroSettings): number {
-  switch (phase) {
-    case 'focus':
-      return minutesToMs(settings.focusMinutes);
-    case 'shortBreak':
-      return minutesToMs(settings.shortBreakMinutes);
-    case 'longBreak':
-      return minutesToMs(settings.longBreakMinutes);
-  }
+export interface UsePomodoroOptions {
+  /** 页面刷新/关闭期间恰好结束的专注，需要补记统计与提示 */
+  onSessionRestored?: (restored: RestoredPhase) => void;
 }
 
 /**
- * 番茄钟状态机：idle -> focus -> shortBreak / longBreak -> focus ...
- *
- * 计时基于**绝对时间戳** endAt，而不是自减计数：
- * 后台标签页的 setInterval 会被浏览器节流到 1 次/分钟，
- * 只有用 endAt 重算才能保证切回来时时间准确（详见 开发踩坑点.md）。
+ * 番茄钟的 React 绑定层。
+ * 转移规则都在 lib/pomodoroMachine.ts 的纯函数里，这里只负责：
+ * 1. 状态持有与重渲染
+ * 2. 计时循环与 visibilitychange 校正
+ * 3. 运行中会话的持久化与恢复（刷新不丢番茄钟）
+ * 4. 把"阶段完成"这一效果抛给调用方（钟声、写日志、通知）
  */
 export function usePomodoro(
   settings: PomodoroSettings,
   /** credited=false 表示这一阶段是被「跳过」的，不应计入统计 */
   onPhaseComplete: (finished: Phase, next: Phase, credited: boolean) => void,
+  options: UsePomodoroOptions = {},
 ): PomodoroController {
-  const [phase, setPhase] = useState<Phase>('focus');
-  const [status, setStatus] = useState<PhaseStatus>('idle');
-  const [remainingMs, setRemainingMs] = useState(() =>
-    durationMs('focus', settings),
-  );
-  const [totalMs, setTotalMs] = useState(() => durationMs('focus', settings));
-  const [completedFocus, setCompletedFocus] = useState(0);
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
 
-  const endAtRef = useRef<number | null>(null);
   const completeRef = useRef(onPhaseComplete);
   completeRef.current = onPhaseComplete;
 
-  /** 进入下一个阶段 */
-  const enterPhase = useCallback(
-    (next: Phase, autoStart: boolean) => {
-      const duration = durationMs(next, settings);
-      setPhase(next);
-      setTotalMs(duration);
-      setRemainingMs(duration);
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
 
-      if (autoStart) {
-        endAtRef.current = Date.now() + duration;
-        setStatus('running');
-      } else {
-        endAtRef.current = null;
-        setStatus('idle');
-      }
-    },
-    [settings],
-  );
+  // 启动时恢复上次会话（幂等的纯计算，可以安全地在渲染中 memo 一次）
+  const bootRef = useRef<ReturnType<typeof rehydrateSession> | null>(null);
+  if (bootRef.current === null) {
+    bootRef.current = rehydrateSession(
+      readStorage(STORAGE_KEYS.session),
+      Date.now(),
+      settings,
+    );
+  }
 
-  /** 结束当前阶段。credited=false 表示跳过（不计入番茄数） */
-  const finishPhase = useCallback(
-    (credited: boolean) => {
-      const finished = phase;
-      let next: Phase;
-      let nextCompleted = completedFocus;
+  const [state, setState] = useState<PomodoroState>(bootRef.current.state);
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
-      if (finished === 'focus') {
-        if (credited) {
-          nextCompleted = completedFocus + 1;
-          if (nextCompleted >= settings.longBreakInterval) {
-            next = 'longBreak';
-            nextCompleted = 0;
-          } else {
-            next = 'shortBreak';
-          }
-        } else {
-          next = 'shortBreak';
-        }
-        setCompletedFocus(nextCompleted);
-      } else {
-        next = 'focus';
-      }
+  const dispatch = useCallback((event: PomodoroEvent) => {
+    const result = transition(stateRef.current, event, settingsRef.current);
 
-      enterPhase(next, settings.autoStartNext && credited);
-      completeRef.current(finished, next, credited);
-    },
-    [phase, completedFocus, settings, enterPhase],
-  );
+    if (result.state !== stateRef.current) {
+      stateRef.current = result.state;
+      setState(result.state);
+    }
 
-  // 计时循环：200ms 重绘一次，真实剩余时间始终由 endAt 推导
+    if (result.completed) {
+      completeRef.current(
+        result.completed.finished,
+        result.completed.next,
+        result.completed.credited,
+      );
+    }
+  }, []);
+
+  // 上报"离开期间完成的专注"，只做一次
+  const reportedRef = useRef(false);
   useEffect(() => {
-    if (status !== 'running') return;
+    const restored = bootRef.current?.completedWhileAway;
+    if (!restored || reportedRef.current) return;
+    reportedRef.current = true;
+    optionsRef.current.onSessionRestored?.(restored);
+  }, []);
 
-    const tick = () => {
-      const endAt = endAtRef.current;
-      if (endAt === null) return;
-      const left = endAt - Date.now();
-      if (left <= 0) {
-        finishPhase(true);
-      } else {
-        setRemainingMs(left);
-      }
-    };
+  // 持久化：只在阶段/状态/结束时间/完成计数变化时写，不跟着每秒的剩余时间写
+  const signatureRef = useRef('');
+  useEffect(() => {
+    const signature = `${state.phase}|${state.status}|${state.endAt ?? ''}|${state.completedFocus}`;
+    if (signature === signatureRef.current) return;
+    signatureRef.current = signature;
+    writeStorage(STORAGE_KEYS.session, serializeSession(stateRef.current, Date.now()));
+  }, [state]);
 
-    const timer = window.setInterval(tick, 200);
+  // 计时循环：200ms 轮询保证边界精度，但状态只在"显示的秒数"变化时更新
+  useEffect(() => {
+    if (state.status !== 'running') return;
+
+    const tick = () => dispatch({ type: 'TICK', at: Date.now() });
+    const timer = window.setInterval(tick, TIMER.tickMs);
     // 从后台切回时立即校正一次
     const onVisible = () => {
       if (document.visibilityState === 'visible') tick();
@@ -131,74 +125,58 @@ export function usePomodoro(
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [status, finishPhase]);
+  }, [state.status, dispatch]);
 
-  // 空闲状态下修改时长设置后，立即刷新显示
+  // 时长设置变化时同步显示（运行中不打断当前阶段）
   useEffect(() => {
-    if (status !== 'idle') return;
-    const duration = durationMs(phase, settings);
-    setTotalMs(duration);
-    setRemainingMs(duration);
+    dispatch({ type: 'SETTINGS_CHANGED', settings: settingsRef.current });
   }, [
-    status,
-    phase,
+    dispatch,
     settings.focusMinutes,
     settings.shortBreakMinutes,
     settings.longBreakMinutes,
   ]);
 
   const start = useCallback(() => {
-    if (status === 'running') return;
-    const base =
-      remainingMs > 0 ? remainingMs : durationMs(phase, settings);
-    endAtRef.current = Date.now() + base;
-    setStatus('running');
-  }, [status, remainingMs, phase, settings]);
+    dispatch({ type: 'START', at: Date.now() });
+  }, [dispatch]);
 
   const pause = useCallback(() => {
-    if (status !== 'running') return;
-    const endAt = endAtRef.current;
-    if (endAt !== null) {
-      setRemainingMs(Math.max(0, endAt - Date.now()));
-    }
-    endAtRef.current = null;
-    setStatus('paused');
-  }, [status]);
+    dispatch({ type: 'PAUSE', at: Date.now() });
+  }, [dispatch]);
 
   const toggle = useCallback(() => {
-    if (status === 'running') pause();
-    else start();
-  }, [status, start, pause]);
+    if (stateRef.current.status === 'running') {
+      dispatch({ type: 'PAUSE', at: Date.now() });
+    } else {
+      dispatch({ type: 'START', at: Date.now() });
+    }
+  }, [dispatch]);
 
   const reset = useCallback(() => {
-    const duration = durationMs(phase, settings);
-    endAtRef.current = null;
-    setStatus('idle');
-    setTotalMs(duration);
-    setRemainingMs(duration);
-  }, [phase, settings]);
+    dispatch({ type: 'RESET' });
+  }, [dispatch]);
 
   const skip = useCallback(() => {
-    finishPhase(false);
-  }, [finishPhase]);
+    dispatch({ type: 'SKIP', at: Date.now() });
+  }, [dispatch]);
 
   const select = useCallback(
-    (next: Phase) => {
-      endAtRef.current = null;
-      enterPhase(next, false);
+    (phase: Phase) => {
+      dispatch({ type: 'SELECT', phase });
     },
-    [enterPhase],
+    [dispatch],
   );
 
-  const progress = totalMs > 0 ? 1 - remainingMs / totalMs : 0;
+  const progress = state.totalMs > 0 ? 1 - state.remainingMs / state.totalMs : 0;
 
   return {
-    phase,
-    status,
-    remainingMs,
-    totalMs,
+    phase: state.phase,
+    status: state.status,
+    remainingMs: state.remainingMs,
+    totalMs: state.totalMs,
     progress,
-    completedFocus,
+    completedFocus: state.completedFocus,
     start,
     pause,
     toggle,

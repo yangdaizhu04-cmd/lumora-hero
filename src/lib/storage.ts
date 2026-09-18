@@ -8,6 +8,7 @@ export const STORAGE_KEYS = {
   log: 'lumora.log.v1',
   archive: 'lumora.archive.v1',
   lastActiveDay: 'lumora.lastActiveDay.v1',
+  session: 'lumora.session.v1',
 } as const;
 
 export function readStorage<T>(key: string): T | null {

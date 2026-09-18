@@ -41,6 +41,20 @@ export interface PomodoroSettings {
   chimeEnabled: boolean;
   /** 阶段结束的系统通知 */
   notificationsEnabled: boolean;
+  /** 开始前的准备倒计时（3-2-1），给大脑一个"要开始了"的信号 */
+  ritualEnabled: boolean;
+  /** 阶段变化时自动切换场景：专注→Deep Woods，休息→Still Water */
+  autoScene: boolean;
+  /** 夜间模式：降低亮度、抑制提示音、偏向 Quiet Dawn */
+  nightModeEnabled: boolean;
+  /** 夜间模式起始小时 0–23 */
+  nightStartHour: number;
+  /** 省电模式：用静态渐变代替背景视频 */
+  lowPowerMode: boolean;
+  /** 自适应音景：合成 pad 随专注进度缓慢渐入 */
+  adaptiveSound: boolean;
+  /** 空间化：环境音左右缓慢游移 */
+  spatialSound: boolean;
 }
 
 /** 今日意图（任务） */
@@ -63,6 +77,8 @@ export interface FocusLogEntry {
   minutes: number;
   taskId: string | null;
   scene: SceneId;
+  /** 这段专注期间切走标签页的次数（分心自察） */
+  interruptions?: number;
 }
 
 export interface DayStat {
@@ -117,9 +133,3 @@ export interface PhaseMeta {
   /** 阶段结束时展示的引导语 */
   hint: string;
 }
-
-export const PHASE_META: Record<Phase, PhaseMeta> = {
-  focus: { label: 'Focus', hint: '该休息了，起身走走' },
-  shortBreak: { label: 'Short Break', hint: '回到专注' },
-  longBreak: { label: 'Long Break', hint: '回到专注' },
-};

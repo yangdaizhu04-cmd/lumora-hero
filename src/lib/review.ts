@@ -1,12 +1,8 @@
+import { LIMITS } from '../config';
 import { dayKey } from './stats';
 import type { DayArchive, FocusLogEntry, ReviewEntry, Task } from '../types';
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
-
-/** 归档保留天数，超出后丢弃最旧的 */
-export const MAX_ARCHIVE_DAYS = 180;
-/** 回顾面板最多展示多少天 */
-export const REVIEW_LIMIT_DAYS = 30;
 
 /** 「今天 / 昨天 / 9 月 18 日 周五」 */
 export function formatDayLabel(dateKey: string, now = new Date()): string {
@@ -86,7 +82,7 @@ export function buildReview(
     }))
     .filter((entry) => entry.tasks.length > 0 || entry.focusCount > 0)
     .sort((a, b) => (a.date < b.date ? 1 : -1))
-    .slice(0, REVIEW_LIMIT_DAYS);
+    .slice(0, LIMITS.reviewDays);
 }
 
 export interface ArchiveTotals {

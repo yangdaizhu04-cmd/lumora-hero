@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { TIMER } from '../config';
 
 interface Props {
   /** 已经过的比例 0–1 */
@@ -49,7 +50,10 @@ export function TimerRing({ progress, children, soft = false }: Props) {
           strokeDasharray={CIRCUMFERENCE}
           strokeDashoffset={offset}
           opacity={soft ? 0.45 : 0.8}
-          style={{ transition: 'stroke-dashoffset 240ms linear, opacity 600ms ease' }}
+          style={{
+            // 状态每秒更新一次，补间略短于 1 秒即可平滑衔接（见 lib/pomodoroMachine.ts）
+            transition: `stroke-dashoffset ${TIMER.ringTransitionMs}ms linear, opacity 600ms ease`,
+          }}
         />
       </svg>
 

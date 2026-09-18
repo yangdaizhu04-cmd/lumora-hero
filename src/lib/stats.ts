@@ -2,9 +2,6 @@ import type { DayStat, FocusLogEntry, FocusStats } from '../types';
 
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
-/** 日志上限，超出后丢弃最旧的（避免 localStorage 无限增长） */
-export const MAX_LOG_ENTRIES = 500;
-
 /** 本地日期键 YYYY-MM-DD */
 export function dayKey(date: Date): string {
   const year = date.getFullYear();

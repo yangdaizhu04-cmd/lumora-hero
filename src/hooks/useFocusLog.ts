@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from 'react';
+import { LIMITS } from '../config';
 import { createId } from '../lib/id';
-import { computeStats, dayKey, MAX_LOG_ENTRIES } from '../lib/stats';
+import { computeStats, dayKey } from '../lib/stats';
 import { STORAGE_KEYS, usePersistentState } from '../lib/storage';
 import type { FocusLogEntry, FocusStats, SceneId } from '../types';
 
@@ -30,7 +31,7 @@ export function useFocusLog(): FocusLogApi {
         taskId,
         scene,
       };
-      setLog((prev) => [...prev, entry].slice(-MAX_LOG_ENTRIES));
+      setLog((prev) => [...prev, entry].slice(-LIMITS.logEntries));
     },
     [setLog],
   );

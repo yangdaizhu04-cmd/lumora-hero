@@ -10,4 +10,11 @@ export const DEFAULT_SETTINGS: PomodoroSettings = {
   muted: false,
   chimeEnabled: true,
   notificationsEnabled: false,
+  ritualEnabled: true,
+  autoScene: false,
+  nightModeEnabled: false,
+  nightStartHour: 22,
+  lowPowerMode: false,
+  adaptiveSound: true,
+  spatialSound: true,
 };

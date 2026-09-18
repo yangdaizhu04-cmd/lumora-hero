@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { LIMITS } from '../config';
 import { createId } from '../lib/id';
-import { MAX_ARCHIVE_DAYS } from '../lib/review';
 import { dayKey } from '../lib/stats';
 import { STORAGE_KEYS, usePersistentState } from '../lib/storage';
 import type {
@@ -96,10 +96,10 @@ function removeArchiveTask(
 }
 
 function pruneArchive(archive: DayArchive[]): DayArchive[] {
-  if (archive.length <= MAX_ARCHIVE_DAYS) return archive;
+  if (archive.length <= LIMITS.archiveDays) return archive;
   return [...archive]
     .sort((a, b) => (a.date < b.date ? 1 : -1))
-    .slice(0, MAX_ARCHIVE_DAYS);
+    .slice(0, LIMITS.archiveDays);
 }
 
 /**
