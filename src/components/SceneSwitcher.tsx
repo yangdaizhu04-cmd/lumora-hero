@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
 import type { Scene } from '../types';
 
@@ -11,7 +11,7 @@ interface Props {
   onSelect: (index: number) => void;
 }
 
-export function SceneSwitcher({
+function SceneSwitcherComponent({
   scenes,
   activeIndex,
   audioReady,
@@ -60,3 +60,5 @@ export function SceneSwitcher({
     </div>
   );
 }
+
+export const SceneSwitcher = memo(SceneSwitcherComponent);

@@ -1,17 +1,33 @@
 import { useMemo, useRef } from 'react';
+import { AUDIO } from '../config';
 import { AmbienceEngine } from '../audio/engine';
-import { playChime, playTick, type ChimeKind } from '../audio/chime';
+import { playChime, playDayMotif, playTick, type ChimeKind } from '../audio/chime';
+import type { AudioLayerConfig } from '../types';
 
 export interface AudioApi {
   /** 在用户手势中调用，解锁音频 */
   unlock: () => Promise<void>;
-  setScene: (layers: { src: string; gain: number }[]) => void;
+  /** 注册全部场景的音层，解锁后预热（切换场景不再有加载延迟） */
+  setRegistry: (configs: AudioLayerConfig[]) => void;
+  setScene: (layers: AudioLayerConfig[]) => void;
   setVolume: (volume: number) => void;
   setMuted: (muted: boolean) => void;
+  setSpatial: (enabled: boolean) => void;
+  /** 自适应音景：按倍率缩放某个音层 */
+  setAdaptive: (src: string, factor: number) => void;
+  /** 合成 pad 的音量与基频 */
+  setPadLevel: (level: number, fadeSec?: number) => void;
+  setPadRoot: (rootHz: number) => void;
   /** 播放阶段转场钟声，并顺便压低环境音 */
   chime: (kind: ChimeKind) => void;
   /** 播放点击反馈音（未解锁时静默忽略） */
   tick: (up: boolean) => void;
+  /** 睡眠定时：在 seconds 秒内淡出并停止 */
+  startSleepFade: (seconds: number) => void;
+  /** 取消睡眠定时并恢复播放 */
+  cancelSleep: () => void;
+  /** 声化日报：把完成的番茄数变成一小段音阶 */
+  playMotif: (count: number) => void;
 }
 
 /**
@@ -37,11 +53,18 @@ export function useAudioEngine(): AudioApi {
   return useMemo<AudioApi>(
     () => ({
       unlock: () => engine.unlock(),
+      setRegistry: (configs) => engine.setRegistry(configs),
       setScene: (layers) => engine.setScene(layers),
       setVolume: (volume) => engine.setVolume(volume),
       setMuted: (muted) => engine.setMuted(muted),
+      setSpatial: (enabled) => engine.setSpatial(enabled),
+      setAdaptive: (src, factor) => engine.setAdaptive(src, factor),
+      setPadLevel: (level, fadeSec) => engine.setPadLevel(level, fadeSec),
+      setPadRoot: (rootHz) => engine.setPadRoot(rootHz),
       chime: (kind) => {
-        engine.duck(kind === 'focusEnd' ? 3200 : 2200);
+        engine.duck(
+          kind === 'focusEnd' ? AUDIO.chimeFocusDuckMs : AUDIO.chimeBreakDuckMs,
+        );
         const ctx = engine.context;
         if (!ctx) return;
         try {
@@ -57,6 +80,17 @@ export function useAudioEngine(): AudioApi {
           playTick(ctx, up);
         } catch {
           /* 同上 */
+        }
+      },
+      startSleepFade: (seconds) => engine.startSleepFade(seconds),
+      cancelSleep: () => engine.cancelSleep(),
+      playMotif: (count) => {
+        const ctx = engine.context;
+        if (!ctx) return;
+        try {
+          playDayMotif(ctx, count);
+        } catch {
+          /* 忽略音频异常 */
         }
       },
     }),

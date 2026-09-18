@@ -8,8 +8,13 @@ import type { FocusLogEntry, FocusStats, SceneId } from '../types';
 export interface FocusLogApi {
   log: FocusLogEntry[];
   stats: FocusStats;
-  /** 记录一次完成的专注（跳过的不记） */
-  addEntry: (minutes: number, taskId: string | null, scene: SceneId) => void;
+  /** 记录一次完成的专注（跳过的不记）。interruptions 缺省表示这段没有采集到 */
+  addEntry: (
+    minutes: number,
+    taskId: string | null,
+    scene: SceneId,
+    interruptions?: number,
+  ) => void;
   clearLog: () => void;
 }
 
@@ -20,7 +25,12 @@ export function useFocusLog(): FocusLogApi {
   );
 
   const addEntry = useCallback(
-    (minutes: number, taskId: string | null, scene: SceneId) => {
+    (
+      minutes: number,
+      taskId: string | null,
+      scene: SceneId,
+      interruptions?: number,
+    ) => {
       if (minutes <= 0) return;
       const now = new Date();
       const entry: FocusLogEntry = {
@@ -30,6 +40,7 @@ export function useFocusLog(): FocusLogApi {
         minutes,
         taskId,
         scene,
+        ...(interruptions === undefined ? {} : { interruptions }),
       };
       setLog((prev) => [...prev, entry].slice(-LIMITS.logEntries));
     },

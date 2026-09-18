@@ -1,5 +1,22 @@
 @import "tailwindcss";
 
+/* ---------- 自托管字体（原先走 Google Fonts，现在无外部依赖） ---------- */
+@font-face {
+  font-family: 'Instrument Serif';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/instrument-serif-latin-400-normal.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Instrument Serif';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/instrument-serif-latin-400-italic.woff2') format('woff2');
+}
+
 html,
 body {
   font-family: 'Instrument Serif', serif;
@@ -138,6 +155,23 @@ input:focus {
   will-change: transform;
 }
 
+/* ---------- 开始前的准备倒计时 ---------- */
+@keyframes ritual-count {
+  from {
+    transform: scale(0.82);
+    opacity: 0.15;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.ritual-count {
+  animation: ritual-count 420ms ease-out;
+  will-change: transform, opacity;
+}
+
 /* ---------- Hide scrollbar (场景切换器横向滚动用) ---------- */
 .no-scrollbar {
   scrollbar-width: none;
@@ -157,7 +191,8 @@ input:focus {
 /* ---------- Reduced motion ---------- */
 @media (prefers-reduced-motion: reduce) {
   .train-bob,
-  .breathe-478 {
+  .breathe-478,
+  .ritual-count {
     animation: none;
   }
 }

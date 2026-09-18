@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Target } from 'lucide-react';
 import type { Task } from '../types';
 
@@ -9,7 +10,7 @@ interface Props {
 const SANS = 'system-ui, sans-serif';
 
 /** 计时器下方的「进行中任务」快捷入口 */
-export function ActiveTaskBar({ task, onClick }: Props) {
+function ActiveTaskBarComponent({ task, onClick }: Props) {
   return (
     <button
       type="button"
@@ -26,3 +27,5 @@ export function ActiveTaskBar({ task, onClick }: Props) {
     </button>
   );
 }
+
+export const ActiveTaskBar = memo(ActiveTaskBarComponent);

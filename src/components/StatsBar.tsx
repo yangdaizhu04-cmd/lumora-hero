@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { formatMinutes } from '../lib/stats';
 import type { FocusStats } from '../types';
 
@@ -8,7 +9,7 @@ interface Props {
 const SANS = 'system-ui, sans-serif';
 
 /** 今日专注数据 + 近 7 天迷你柱状图 */
-export function StatsBar({ stats }: Props) {
+function StatsBarComponent({ stats }: Props) {
   const max = Math.max(1, ...stats.last7.map((day) => day.count));
   const barHeight = (count: number) => 3 + Math.round((count / max) * 13);
 
@@ -49,3 +50,5 @@ export function StatsBar({ stats }: Props) {
     </div>
   );
 }
+
+export const StatsBar = memo(StatsBarComponent);

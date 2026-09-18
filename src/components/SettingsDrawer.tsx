@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
-import { X } from 'lucide-react';
-import { clamp } from '../lib/time';
+import { memo, useEffect, useRef, type ReactNode } from 'react';
+import { Download, Link2, Moon, Upload, X } from 'lucide-react';
+import { clamp, formatRemainingMinutes } from '../lib/time';
 import { DEFAULT_SETTINGS } from '../lib/defaults';
 import type { NotifyPermission } from '../lib/notify';
 import type { PomodoroSettings } from '../types';
@@ -9,21 +9,40 @@ interface Props {
   open: boolean;
   settings: PomodoroSettings;
   notifyPermission: NotifyPermission;
+  /** 设备相关的提示（低电量 / 省流） */
+  deviceHint: string | null;
+  /** 睡眠定时剩余毫秒，0 表示未启用 */
+  sleepRemainingMs: number;
   onChange: (patch: Partial<PomodoroSettings>) => void;
   onNotificationsChange: (enabled: boolean) => void;
+  onStartSleep: (minutes: number) => void;
+  onCancelSleep: () => void;
+  onExport: () => void;
+  onImport: (file: File) => void;
+  onShare: () => void;
   onClose: () => void;
 }
 
 const SANS = 'system-ui, sans-serif';
+const SLEEP_OPTIONS = [15, 30, 60];
 
-export function SettingsDrawer({
+function SettingsDrawerComponent({
   open,
   settings,
   notifyPermission,
+  deviceHint,
+  sleepRemainingMs,
   onChange,
   onNotificationsChange,
+  onStartSleep,
+  onCancelSleep,
+  onExport,
+  onImport,
+  onShare,
   onClose,
 }: Props) {
+  const fileRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => {
@@ -33,7 +52,8 @@ export function SettingsDrawer({
     return () => window.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
-  const notifyDisabled = notifyPermission === 'unsupported' || notifyPermission === 'denied';
+  const notifyDisabled =
+    notifyPermission === 'unsupported' || notifyPermission === 'denied';
 
   return (
     <>
@@ -74,45 +94,45 @@ export function SettingsDrawer({
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 pb-8">
-          <Stepper
-            label="专注时长"
-            value={settings.focusMinutes}
-            min={5}
-            max={120}
-            step={5}
-            unit="分钟"
-            onChange={(value) => onChange({ focusMinutes: value })}
-          />
-          <Stepper
-            label="短休时长"
-            value={settings.shortBreakMinutes}
-            min={1}
-            max={30}
-            step={1}
-            unit="分钟"
-            onChange={(value) => onChange({ shortBreakMinutes: value })}
-          />
-          <Stepper
-            label="长休时长"
-            value={settings.longBreakMinutes}
-            min={5}
-            max={60}
-            step={5}
-            unit="分钟"
-            onChange={(value) => onChange({ longBreakMinutes: value })}
-          />
-          <Stepper
-            label="长休间隔"
-            value={settings.longBreakInterval}
-            min={2}
-            max={8}
-            step={1}
-            unit="个番茄"
-            onChange={(value) => onChange({ longBreakInterval: value })}
-          />
-
-          <div className="mt-2 border-t border-white/10 pt-2">
+        <div className="flex-1 overflow-y-auto px-6 pb-10">
+          {/* ---------- 计时 ---------- */}
+          <Section title="计时">
+            <Stepper
+              label="专注时长"
+              value={settings.focusMinutes}
+              min={5}
+              max={120}
+              step={5}
+              unit="分钟"
+              onChange={(value) => onChange({ focusMinutes: value })}
+            />
+            <Stepper
+              label="短休时长"
+              value={settings.shortBreakMinutes}
+              min={1}
+              max={30}
+              step={1}
+              unit="分钟"
+              onChange={(value) => onChange({ shortBreakMinutes: value })}
+            />
+            <Stepper
+              label="长休时长"
+              value={settings.longBreakMinutes}
+              min={5}
+              max={60}
+              step={5}
+              unit="分钟"
+              onChange={(value) => onChange({ longBreakMinutes: value })}
+            />
+            <Stepper
+              label="长休间隔"
+              value={settings.longBreakInterval}
+              min={2}
+              max={8}
+              step={1}
+              unit="个番茄"
+              onChange={(value) => onChange({ longBreakInterval: value })}
+            />
             <Row label="自动开始下一段">
               <Toggle
                 checked={settings.autoStartNext}
@@ -120,7 +140,17 @@ export function SettingsDrawer({
                 label="自动开始下一段"
               />
             </Row>
+            <Row label="开始前 3 秒准备" hint="给大脑一个进入状态的信号">
+              <Toggle
+                checked={settings.ritualEnabled}
+                onChange={(checked) => onChange({ ritualEnabled: checked })}
+                label="开始前 3 秒准备"
+              />
+            </Row>
+          </Section>
 
+          {/* ---------- 声音 ---------- */}
+          <Section title="声音">
             <Row label="阶段结束提示音">
               <Toggle
                 checked={settings.chimeEnabled}
@@ -128,7 +158,23 @@ export function SettingsDrawer({
                 label="阶段结束提示音"
               />
             </Row>
-
+            <Row
+              label="自适应音景"
+              hint="随专注进度缓慢铺入一层低频长音，越投入越沉"
+            >
+              <Toggle
+                checked={settings.adaptiveSound}
+                onChange={(checked) => onChange({ adaptiveSound: checked })}
+                label="自适应音景"
+              />
+            </Row>
+            <Row label="空间化" hint="环境音在左右耳之间极缓慢地游移（建议戴耳机）">
+              <Toggle
+                checked={settings.spatialSound}
+                onChange={(checked) => onChange({ spatialSound: checked })}
+                label="空间化"
+              />
+            </Row>
             <Row
               label="系统通知"
               hint={
@@ -146,7 +192,127 @@ export function SettingsDrawer({
                 label="系统通知"
               />
             </Row>
-          </div>
+          </Section>
+
+          {/* ---------- 氛围 ---------- */}
+          <Section title="氛围">
+            <Row label="自动切换场景" hint="专注进深林，休息靠水边">
+              <Toggle
+                checked={settings.autoScene}
+                onChange={(checked) => onChange({ autoScene: checked })}
+                label="自动切换场景"
+              />
+            </Row>
+            <Row label="夜间模式" hint="降低亮度、静音钟声、偏向 Quiet Dawn">
+              <Toggle
+                checked={settings.nightModeEnabled}
+                onChange={(checked) => onChange({ nightModeEnabled: checked })}
+                label="夜间模式"
+              />
+            </Row>
+            {settings.nightModeEnabled && (
+              <Stepper
+                label="夜间起点"
+                value={settings.nightStartHour}
+                min={18}
+                max={23}
+                step={1}
+                unit="点"
+                onChange={(value) => onChange({ nightStartHour: value })}
+              />
+            )}
+            <Row
+              label="省电模式"
+              hint={
+                deviceHint ??
+                '用静态渐变代替背景视频，显著降低耗电与流量'
+              }
+            >
+              <Toggle
+                checked={settings.lowPowerMode}
+                onChange={(checked) => onChange({ lowPowerMode: checked })}
+                label="省电模式"
+              />
+            </Row>
+          </Section>
+
+          {/* ---------- 睡眠 ---------- */}
+          <Section title="睡眠定时">
+            {sleepRemainingMs > 0 ? (
+              <div className="flex items-center justify-between py-3">
+                <span className="flex items-center gap-2 text-sm">
+                  <Moon className="h-3.5 w-3.5 opacity-70" />
+                  还有 {formatRemainingMinutes(sleepRemainingMs)}淡出
+                </span>
+                <button
+                  type="button"
+                  onClick={onCancelSleep}
+                  className="liquid-glass rounded-full px-4 py-2 text-xs"
+                >
+                  取消
+                </button>
+              </div>
+            ) : (
+              <div className="py-3">
+                <p className="text-[11px] leading-snug text-white/40">
+                  环境音会在设定时间内缓慢淡出并停止，适合睡前收尾。
+                </p>
+                <div className="mt-3 flex gap-2">
+                  {SLEEP_OPTIONS.map((minutes) => (
+                    <button
+                      key={minutes}
+                      type="button"
+                      onClick={() => onStartSleep(minutes)}
+                      className="liquid-glass flex-1 rounded-full py-2.5 text-xs transition-opacity hover:opacity-75"
+                    >
+                      {minutes} 分钟
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </Section>
+
+          {/* ---------- 数据 ---------- */}
+          <Section title="数据">
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={onExport}
+                className="liquid-glass flex flex-1 items-center justify-center gap-1.5 rounded-full py-2.5 text-xs transition-opacity hover:opacity-75"
+              >
+                <Download className="h-3.5 w-3.5" />
+                导出备份
+              </button>
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                className="liquid-glass flex flex-1 items-center justify-center gap-1.5 rounded-full py-2.5 text-xs transition-opacity hover:opacity-75"
+              >
+                <Upload className="h-3.5 w-3.5" />
+                导入备份
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={onShare}
+              className="liquid-glass mt-2 flex w-full items-center justify-center gap-1.5 rounded-full py-2.5 text-xs transition-opacity hover:opacity-75"
+            >
+              <Link2 className="h-3.5 w-3.5" />
+              复制当前音景分享链接
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) onImport(file);
+                event.target.value = '';
+              }}
+            />
+          </Section>
 
           <button
             type="button"
@@ -157,12 +323,26 @@ export function SettingsDrawer({
           </button>
 
           <p className="mt-6 text-xs leading-relaxed text-white/45">
-            快捷键：Space 开始/暂停 · R 重置 · S 跳过 · 1–4 切换场景 · M 静音 · T 今日意图 ·
-            F 专注模式
+            快捷键：Space 开始/暂停 · R 重置 · S 跳过 · 1–4 切换场景 · M 静音 · T
+            今日意图 · F 专注模式
           </p>
         </div>
       </aside>
     </>
+  );
+}
+
+/** 与 TaskPanel 同理：常驻挂载 + 高频重渲染，需要 memo */
+export const SettingsDrawer = memo(SettingsDrawerComponent);
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="mt-5 first:mt-0">
+      <h3 className="text-[11px] uppercase tracking-[0.22em] text-white/35">
+        {title}
+      </h3>
+      <div className="mt-2 border-t border-white/10">{children}</div>
+    </section>
   );
 }
 
@@ -173,13 +353,17 @@ function Row({
 }: {
   label: string;
   hint?: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <div className="flex items-center justify-between gap-4 border-b border-white/[0.06] py-4 last:border-b-0">
       <div className="min-w-0">
         <div className="text-sm">{label}</div>
-        {hint && <div className="mt-0.5 text-[11px] leading-snug text-white/40">{hint}</div>}
+        {hint && (
+          <div className="mt-0.5 text-[11px] leading-snug text-white/40">
+            {hint}
+          </div>
+        )}
       </div>
       {children}
     </div>
@@ -198,7 +382,7 @@ interface StepperProps {
 
 function Stepper({ label, value, min, max, step, unit, onChange }: StepperProps) {
   return (
-    <div className="flex items-center justify-between border-t border-white/10 py-4">
+    <div className="flex items-center justify-between border-b border-white/[0.06] py-4 last:border-b-0">
       <span className="text-sm">{label}</span>
       <div className="flex items-center gap-2" role="group" aria-label={label}>
         <button

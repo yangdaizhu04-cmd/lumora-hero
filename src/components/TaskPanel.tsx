@@ -1,14 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
-import { Check, Circle, Plus, Target, Trash2, X } from 'lucide-react';
+import { memo, useEffect, useRef, useState } from 'react';
+import { Check, Circle, Plus, Sparkles, Target, Trash2, X } from 'lucide-react';
 import { formatDayLabel, sumReview } from '../lib/review';
 import { formatMinutes } from '../lib/stats';
 import { clamp } from '../lib/time';
+import type { Insight } from '../lib/insights';
 import type { ReviewEntry, Task } from '../types';
 
 interface Props {
   open: boolean;
   tasks: Task[];
   review: ReviewEntry[];
+  insights: Insight[];
   activeTaskId: string | null;
   onClose: () => void;
   onAdd: (title: string, estimate: number) => void;
@@ -22,10 +24,11 @@ const SANS = 'system-ui, sans-serif';
 
 type Tab = 'today' | 'review';
 
-export function TaskPanel({
+function TaskPanelComponent({
   open,
   tasks,
   review,
+  insights,
   activeTaskId,
   onClose,
   onAdd,
@@ -282,7 +285,7 @@ export function TaskPanel({
           </>
         ) : (
           <div className="mt-4 flex-1 overflow-y-auto px-5 pb-6">
-            <ReviewList review={review} />
+            <ReviewList review={review} insights={insights} />
           </div>
         )}
       </aside>
@@ -290,8 +293,14 @@ export function TaskPanel({
   );
 }
 
-/** 按天回顾：任务快照 + 当天专注数据 */
-function ReviewList({ review }: { review: ReviewEntry[] }) {
+/** 按天回顾：洞察 + 每日任务快照 + 专注数据 */
+function ReviewList({
+  review,
+  insights,
+}: {
+  review: ReviewEntry[];
+  insights: Insight[];
+}) {
   if (review.length === 0) {
     return (
       <p className="px-2 py-10 text-center text-sm text-white/40">
@@ -306,6 +315,20 @@ function ReviewList({ review }: { review: ReviewEntry[] }) {
 
   return (
     <div className="space-y-3">
+      {insights.length > 0 && (
+        <div className="space-y-2">
+          {insights.map((insight) => (
+            <p
+              key={insight.id}
+              className="flex gap-2 rounded-2xl bg-white/[0.06] px-3 py-2 text-[12px] leading-relaxed text-white/75"
+            >
+              <Sparkles className="mt-[2px] h-3 w-3 shrink-0 opacity-50" />
+              {insight.text}
+            </p>
+          ))}
+        </div>
+      )}
+
       <p className="px-1 text-[11px] text-white/45">
         近 {totals.days} 天累计 {totals.count} 个番茄 ·{' '}
         {formatMinutes(totals.minutes)}
@@ -321,6 +344,12 @@ function ReviewList({ review }: { review: ReviewEntry[] }) {
                 {day.focusCount} 个番茄 · {formatMinutes(day.focusMinutes)}
               </span>
             </div>
+
+            {day.interruptions > 0 && (
+              <p className="mt-1 text-[11px] text-white/35">
+                期间离开 {day.interruptions} 次
+              </p>
+            )}
 
             {day.tasks.length > 0 ? (
               <ul className="mt-2 space-y-1.5">
@@ -361,3 +390,9 @@ function ReviewList({ review }: { review: ReviewEntry[] }) {
     </div>
   );
 }
+
+/**
+ * 抽屉常驻挂载（靠 visibility 隐藏），如果不做 memo，
+ * 计时器每秒的状态更新都会把这里三百多行 JSX 重新求值一次。
+ */
+export const TaskPanel = memo(TaskPanelComponent);

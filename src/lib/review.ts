@@ -43,6 +43,7 @@ export function buildReview(
       isToday: date === today,
       focusCount: 0,
       focusMinutes: 0,
+      interruptions: 0,
       tasks: [],
       doneCount: 0,
     };
@@ -58,6 +59,7 @@ export function buildReview(
     const day = ensure(entry.date);
     day.focusCount += 1;
     day.focusMinutes += entry.minutes;
+    day.interruptions += entry.interruptions ?? 0;
   });
 
   const todayEntry = ensure(today);

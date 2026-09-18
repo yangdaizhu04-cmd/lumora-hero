@@ -8,12 +8,14 @@ export type SceneId =
   | 'deep-woods'
   | 'quiet-dawn';
 
-/** 一个可播放的音景层（P1 每场景一层，架构支持多层叠加） */
+/** 一个可播放的音景层（架构支持多层叠加） */
 export interface AudioLayerConfig {
   /** public 目录下的音频路径 */
   src: string;
   /** 该层相对场景的基准音量 0–1 */
   gain: number;
+  /** 空间化基准位置 -1（左）..1（右），不填为居中 */
+  pan?: number;
 }
 
 export interface Scene {
@@ -24,6 +26,8 @@ export interface Scene {
   textColor: string;
   /** 音景层，可叠加 */
   layers: AudioLayerConfig[];
+  /** 合成 pad 的基频（Hz），自适应音景会随专注进度让它缓慢渐入 */
+  padRootHz: number;
 }
 
 export interface PomodoroSettings {
@@ -124,6 +128,8 @@ export interface ReviewEntry {
   isToday: boolean;
   focusCount: number;
   focusMinutes: number;
+  /** 当天累计离开标签页次数（分心自察） */
+  interruptions: number;
   tasks: ArchivedTask[];
   doneCount: number;
 }

@@ -1,7 +1,10 @@
-import { Pause, Play, RotateCcw, SkipForward } from 'lucide-react';
+import { memo } from 'react';
+import { Pause, Play, RotateCcw, SkipForward, Square } from 'lucide-react';
 
 interface Props {
   isRunning: boolean;
+  /** 开始前的准备倒计时进行中 */
+  isPreparing: boolean;
   onToggle: () => void;
   onReset: () => void;
   onSkip: () => void;
@@ -9,7 +12,13 @@ interface Props {
 
 const SANS = 'system-ui, sans-serif';
 
-export function ControlBar({ isRunning, onToggle, onReset, onSkip }: Props) {
+function ControlBarComponent({
+  isRunning,
+  isPreparing,
+  onToggle,
+  onReset,
+  onSkip,
+}: Props) {
   return (
     <div className="mt-8 flex items-center justify-center gap-4 sm:gap-5">
       <button
@@ -26,11 +35,13 @@ export function ControlBar({ isRunning, onToggle, onReset, onSkip }: Props) {
       <button
         type="button"
         onClick={onToggle}
-        aria-label={isRunning ? '暂停' : '开始专注'}
+        aria-label={isPreparing ? '取消准备' : isRunning ? '暂停' : '开始专注'}
         title="开始 / 暂停 (Space)"
         className="flex h-16 w-16 items-center justify-center rounded-full bg-white text-[#182C41] shadow-[0_8px_32px_rgba(0,0,0,0.28)] transition-transform duration-300 hover:scale-[1.04] active:scale-[0.98] sm:h-[72px] sm:w-[72px]"
       >
-        {isRunning ? (
+        {isPreparing ? (
+          <Square className="h-5 w-5" fill="currentColor" />
+        ) : isRunning ? (
           <Pause className="h-6 w-6" fill="currentColor" />
         ) : (
           <Play className="ml-0.5 h-6 w-6" fill="currentColor" />
@@ -50,3 +61,5 @@ export function ControlBar({ isRunning, onToggle, onReset, onSkip }: Props) {
     </div>
   );
 }
+
+export const ControlBar = memo(ControlBarComponent);
