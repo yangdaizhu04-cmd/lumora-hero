@@ -427,10 +427,15 @@ function Toggle({
         background: checked ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.2)',
       }}
     >
+      {/*
+        旋钮必须显式定位到 left-0.5：只写 absolute 的话，left 为 auto 会采用"静态位置"，
+        而 button 默认 text-align: center，静态位置是居中的 —— 再叠加 translateX 就会冲出轨道右缘。
+        行程 = 44（轨道）- 20（旋钮）- 2×2（两侧留白）= 20px。
+      */}
       <span
-        className="absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-300"
+        className="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white transition-transform duration-300"
         style={{
-          transform: checked ? 'translateX(22px)' : 'translateX(2px)',
+          transform: checked ? 'translateX(20px)' : 'translateX(0)',
           boxShadow: '0 1px 3px rgba(0,0,0,0.35)',
         }}
       />
