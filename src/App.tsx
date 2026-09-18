@@ -221,10 +221,42 @@ export default function App() {
     onSessionRestored: handleSessionRestored,
   });
 
-  /** 分心自察：只在专注真正运行时统计 */
+  /**
+   * 把控制器成员解构出来使用。
+   * 除了少写 pomodoro.xxx，更重要的是让 react-hooks 的依赖检查能看清每一项：
+   * 里面的函数都是 useCallback 稳定的，依赖数组因此保持稳定，子组件的 memo 才有意义。
+   */
+  const {
+    phase: phaseState,
+    status: phaseStatus,
+    remainingMs,
+    totalMs,
+    progress,
+    completedFocus,
+    restoredAttention,
+    syncInterruptions,
+    start: startTimer,
+    pause: pauseTimer,
+    reset: resetTimer,
+    skip: skipTimer,
+    select: selectPhase,
+  } = pomodoro;
+
+  /** 分心自察：只在专注真正运行时统计，刷新后从存档里的次数接着算 */
   const attention = useAttention(
-    pomodoro.phase === 'focus' && pomodoro.status === 'running',
+    phaseState === 'focus' && phaseStatus === 'running',
+    restoredAttention,
   );
+
+  useEffect(() => {
+    syncInterruptions(attention.count);
+  }, [syncInterruptions, attention.count]);
+
+  // 仅开发环境：便于验证分心计数是否被正确采集（生产构建会被移除）
+  if (import.meta.env.DEV) {
+    const probe = window as unknown as { __lumoraAttention?: number };
+    probe.__lumoraAttention = attention.count;
+  }
 
   // 每次渲染同步"最新值"（refs 是给回调读的，不会触发重渲染）
   latest.current = {
@@ -233,7 +265,7 @@ export default function App() {
     scene,
     night,
     attention: attention.count,
-    totalMs: pomodoro.totalMs,
+    totalMs,
     settings,
   };
 
@@ -246,8 +278,8 @@ export default function App() {
   // ---------- 准备倒计时 ----------
   const ritual = useRitual(
     useCallback(() => {
-      pomodoro.start();
-    }, [pomodoro.start]),
+      startTimer();
+    }, [startTimer]),
   );
 
   // ---------- 交互 ----------
@@ -279,22 +311,18 @@ export default function App() {
       return;
     }
 
-    if (pomodoro.status === 'running') {
+    if (phaseStatus === 'running') {
       audio.tick(false);
-      pomodoro.pause();
+      pauseTimer();
       return;
     }
 
     audio.tick(true);
-    if (
-      pomodoro.status === 'idle' &&
-      pomodoro.phase === 'focus' &&
-      settings.ritualEnabled
-    ) {
+    if (phaseStatus === 'idle' && phaseState === 'focus' && settings.ritualEnabled) {
       ritual.start(UX.ritualSeconds);
       return;
     }
-    pomodoro.start();
+    startTimer();
   }, [
     unlockAudio,
     wake,
@@ -302,10 +330,10 @@ export default function App() {
     ritual.isActive,
     ritual.cancel,
     ritual.start,
-    pomodoro.status,
-    pomodoro.phase,
-    pomodoro.pause,
-    pomodoro.start,
+    phaseStatus,
+    phaseState,
+    pauseTimer,
+    startTimer,
     settings.ritualEnabled,
   ]);
 
@@ -321,9 +349,9 @@ export default function App() {
   const handleSelectPhase = useCallback(
     (phase: Phase) => {
       wake();
-      pomodoro.select(phase);
+      selectPhase(phase);
     },
-    [wake, pomodoro.select],
+    [wake, selectPhase],
   );
 
   const handleToggleMute = useCallback(() => {
@@ -464,17 +492,15 @@ export default function App() {
   // 自适应音景：pad 随专注进度缓慢渐入；环境音同时轻微收敛
   const padRatioRef = useRef(-1);
   useEffect(() => {
-    const progress =
-      pomodoro.phase === 'focus' && pomodoro.status !== 'idle'
-        ? pomodoro.progress
-        : 0;
+    const focusProgress =
+      phaseState === 'focus' && phaseStatus !== 'idle' ? progress : 0;
 
     let target = 0;
     if (settings.adaptiveSound) {
       target =
-        pomodoro.phase === 'focus'
-          ? progress * AUDIO.padFocusRamp
-          : pomodoro.status === 'running'
+        phaseState === 'focus'
+          ? focusProgress * AUDIO.padFocusRamp
+          : phaseStatus === 'running'
             ? 0.05
             : 0;
     }
@@ -483,69 +509,61 @@ export default function App() {
     if (!changed) return;
     padRatioRef.current = target;
     audio.setPadLevel(target, 5);
-  }, [
-    audio,
-    settings.adaptiveSound,
-    pomodoro.phase,
-    pomodoro.status,
-    pomodoro.progress,
-  ]);
+  }, [audio, settings.adaptiveSound, phaseState, phaseStatus, progress]);
 
   useEffect(() => {
     scene.layers.forEach((layer) => {
       const factor =
-        settings.adaptiveSound && pomodoro.phase === 'focus'
-          ? 1 - (1 - AUDIO.adaptiveDip) * pomodoro.progress
+        settings.adaptiveSound && phaseState === 'focus'
+          ? 1 - (1 - AUDIO.adaptiveDip) * progress
           : 1;
       audio.setAdaptive(layer.src, factor);
     });
-  }, [audio, scene, settings.adaptiveSound, pomodoro.phase, pomodoro.progress]);
+  }, [audio, scene, settings.adaptiveSound, phaseState, progress]);
 
   // ---------- 自动场景编排 ----------
   useEffect(() => {
     if (!settings.autoScene) return;
-    const index = sceneIndexById(sceneForPhase(pomodoro.phase, night));
+    const index = sceneIndexById(sceneForPhase(phaseState, night));
     setSceneIndex((prev) => (prev === index ? prev : index));
-  }, [settings.autoScene, pomodoro.phase, night, setSceneIndex]);
+  }, [settings.autoScene, phaseState, night, setSceneIndex]);
 
   // ---------- 分心自察 ----------
-  // 只在"进入一个全新的专注阶段"时清零；暂停后继续不应该丢掉计数
-  const lastAttentionPhaseRef = useRef<Phase | null>(null);
+  // 只在"进入一个全新的专注阶段"时清零；暂停后继续、刷新恢复都不应该丢掉计数
+  const lastAttentionPhaseRef = useRef<Phase | null>(phaseState);
   useEffect(() => {
-    if (pomodoro.phase === 'focus' && lastAttentionPhaseRef.current !== 'focus') {
+    if (phaseState === 'focus' && lastAttentionPhaseRef.current !== 'focus') {
       attention.reset();
     }
-    lastAttentionPhaseRef.current = pomodoro.phase;
-  }, [pomodoro.phase, attention.reset]);
+    lastAttentionPhaseRef.current = phaseState;
+  }, [phaseState, attention.reset]);
 
   // ---------- 窗口标题 ----------
   useEffect(() => {
-    document.title = `${formatClock(pomodoro.remainingMs)} · ${
-      PHASE_META[pomodoro.phase].label
-    } — Lumora`;
-  }, [pomodoro.remainingMs, pomodoro.phase]);
+    document.title = `${formatClock(remainingMs)} · ${PHASE_META[phaseState].label} — Lumora`;
+  }, [remainingMs, phaseState]);
 
   // ---------- 系统媒体控制（耳机按键 / 锁屏） ----------
   const mediaPlay = useCallback(() => {
     unlockAudio();
-    pomodoro.start();
-  }, [unlockAudio, pomodoro.start]);
-  const mediaPause = useCallback(() => pomodoro.pause(), [pomodoro.pause]);
-  const mediaStop = useCallback(() => pomodoro.reset(), [pomodoro.reset]);
-  const mediaNext = useCallback(() => pomodoro.skip(), [pomodoro.skip]);
+    startTimer();
+  }, [unlockAudio, startTimer]);
+  const mediaPause = useCallback(() => pauseTimer(), [pauseTimer]);
+  const mediaStop = useCallback(() => resetTimer(), [resetTimer]);
+  const mediaNext = useCallback(() => skipTimer(), [skipTimer]);
 
   useMediaSession({
-    title: `${formatClock(pomodoro.remainingMs)} · ${PHASE_META[pomodoro.phase].label}`,
+    title: `${formatClock(remainingMs)} · ${PHASE_META[phaseState].label}`,
     artist:
-      pomodoro.status === 'running'
+      phaseStatus === 'running'
         ? '专注中'
-        : pomodoro.status === 'paused'
+        : phaseStatus === 'paused'
           ? '已暂停'
           : '准备开始',
     album: scene.label,
-    isPlaying: pomodoro.status === 'running',
-    durationMs: pomodoro.totalMs,
-    positionMs: pomodoro.totalMs - pomodoro.remainingMs,
+    isPlaying: phaseStatus === 'running',
+    durationMs: totalMs,
+    positionMs: totalMs - remainingMs,
     onPlay: mediaPlay,
     onPause: mediaPause,
     onStop: mediaStop,
@@ -641,10 +659,10 @@ export default function App() {
         handleToggle();
         break;
       case 'KeyR':
-        pomodoro.reset();
+        resetTimer();
         break;
       case 'KeyS':
-        pomodoro.skip();
+        skipTimer();
         break;
       case 'KeyM':
         handleToggleMute();
@@ -680,16 +698,14 @@ export default function App() {
 
   // ---------- 渲染 ----------
   const breathing =
-    !reducedMotion &&
-    pomodoro.phase !== 'focus' &&
-    pomodoro.status === 'running';
+    !reducedMotion && phaseState !== 'focus' && phaseStatus === 'running';
   const showChrome = !isFocusMode;
 
   const statusText = ritual.isActive
     ? '准备中'
-    : pomodoro.status === 'running'
-      ? PHASE_META[pomodoro.phase].label
-      : pomodoro.status === 'paused'
+    : phaseStatus === 'running'
+      ? PHASE_META[phaseState].label
+      : phaseStatus === 'paused'
         ? '已暂停'
         : '准备开始';
 
@@ -711,6 +727,7 @@ export default function App() {
 
       {/* 夜间模式：只压暗画面，不用 filter（filter 会影响 fixed 定位的抽屉） */}
       <div
+        data-testid="night-dim"
         className="pointer-events-none absolute inset-0 z-[1] transition-opacity duration-1000"
         style={{ background: 'rgba(6,10,14,0.34)', opacity: night ? 1 : 0 }}
       />
@@ -747,8 +764,8 @@ export default function App() {
             }`}
           >
             <PhaseTabs
-              phase={pomodoro.phase}
-              completedFocus={pomodoro.completedFocus}
+              phase={phaseState}
+              completedFocus={completedFocus}
               longBreakInterval={settings.longBreakInterval}
               onSelect={handleSelectPhase}
             />
@@ -759,16 +776,13 @@ export default function App() {
               breathing ? 'breathe-478' : ''
             }`}
           >
-            <TimerRing
-              progress={pomodoro.progress}
-              soft={pomodoro.phase !== 'focus'}
-            >
+            <TimerRing progress={progress} soft={phaseState !== 'focus'}>
               <div className="flex flex-col items-center">
                 <div
                   data-testid="timer"
                   className="text-[3.6rem] leading-none sm:text-[5rem]"
                 >
-                  <TimerDisplay text={formatClock(pomodoro.remainingMs)} />
+                  <TimerDisplay text={formatClock(remainingMs)} />
                 </div>
                 <p
                   data-testid="phase-status"
@@ -783,11 +797,11 @@ export default function App() {
           </div>
 
           <ControlBar
-            isRunning={pomodoro.status === 'running'}
+            isRunning={phaseStatus === 'running'}
             isPreparing={ritual.isActive}
             onToggle={handleToggle}
-            onReset={pomodoro.reset}
-            onSkip={pomodoro.skip}
+            onReset={resetTimer}
+            onSkip={skipTimer}
           />
 
           {tasks.activeTask && (

@@ -12,6 +12,7 @@ export default tseslint.config(
       'public/sw.js',
       'public/audio/**',
       'npm-install.log',
+      '.tmp-*/**',
     ],
   },
   {

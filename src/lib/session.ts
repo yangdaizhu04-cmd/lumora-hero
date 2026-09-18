@@ -17,6 +17,8 @@ export interface PersistedSession {
   completedFocus: number;
   endAt: number | null;
   savedAt: number;
+  /** 本段已记录的"离开页面"次数（分心自察），随会话一起恢复 */
+  interruptions?: number;
 }
 
 export interface RestoredPhase {
@@ -31,6 +33,8 @@ export interface RehydrateResult {
    * 只有专注阶段会返回它 —— 休息阶段结束没有成绩可记，直接进入下一段状态即可。
    */
   completedWhileAway: RestoredPhase | null;
+  /** 恢复出来的分心次数，交给 UI 层作为计数起点 */
+  interruptions: number;
 }
 
 const PHASES: Phase[] = ['focus', 'shortBreak', 'longBreak'];
@@ -47,7 +51,11 @@ function isPersistedSession(value: unknown): value is PersistedSession {
   );
 }
 
-export function serializeSession(state: PomodoroState, savedAt: number): PersistedSession {
+export function serializeSession(
+  state: PomodoroState,
+  savedAt: number,
+  interruptions = 0,
+): PersistedSession {
   return {
     phase: state.phase,
     status: state.status,
@@ -57,6 +65,7 @@ export function serializeSession(state: PomodoroState, savedAt: number): Persist
     completedFocus: state.completedFocus,
     endAt: state.endAt,
     savedAt,
+    interruptions,
   };
 }
 
@@ -66,8 +75,14 @@ export function rehydrateSession(
   settings: PomodoroSettings,
 ): RehydrateResult {
   if (!isPersistedSession(saved)) {
-    return { state: initialState(settings), completedWhileAway: null };
+    return {
+      state: initialState(settings),
+      completedWhileAway: null,
+      interruptions: 0,
+    };
   }
+
+  const interruptions = Math.max(0, Math.round(saved.interruptions ?? 0));
 
   const base: PomodoroState = {
     phase: saved.phase,
@@ -84,12 +99,17 @@ export function rehydrateSession(
       return {
         state: { ...base, remainingMs: saved.endAt - now },
         completedWhileAway: null,
+        interruptions,
       };
     }
 
     // 已经结束且在合理窗口内：复用状态机的完成规则结算
     if (now - saved.endAt >= UX.sessionRestoreWindowMs) {
-      return { state: initialState(settings), completedWhileAway: null };
+      return {
+        state: initialState(settings),
+        completedWhileAway: null,
+        interruptions: 0,
+      };
     }
 
     const live: PomodoroState = { ...base, status: 'running', remainingMs: 0 };
@@ -106,9 +126,10 @@ export function rehydrateSession(
       completedWhileAway: credited
         ? { phase: 'focus', minutes: Math.round(saved.totalMs / 60_000) }
         : null,
+      interruptions,
     };
   }
 
   // idle / paused：原样恢复，endAt 一律清空
-  return { state: { ...base, endAt: null }, completedWhileAway: null };
+  return { state: { ...base, endAt: null }, completedWhileAway: null, interruptions };
 }

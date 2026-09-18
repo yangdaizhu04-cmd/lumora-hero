@@ -32,7 +32,42 @@ describe('序列化', () => {
       completedFocus: 0,
       endAt: null,
       savedAt: T0,
+      interruptions: 0,
     });
+  });
+});
+
+describe('分心次数随会话保存', () => {
+  it('写入并读回', () => {
+    const saved = serializeSession(
+      {
+        phase: 'focus',
+        status: 'running',
+        remainingMs: 25 * MIN,
+        totalMs: 25 * MIN,
+        completedFocus: 0,
+        endAt: T0 + 25 * MIN,
+      },
+      T0,
+      3,
+    );
+    expect(saved.interruptions).toBe(3);
+    expect(rehydrateSession(saved, T0 + MIN, S).interruptions).toBe(3);
+  });
+
+  it('旧存档没有该字段时按 0 处理', () => {
+    const legacy = { ...running() };
+    delete (legacy as Partial<PersistedSession>).interruptions;
+    expect(rehydrateSession(legacy, T0 + MIN, S).interruptions).toBe(0);
+  });
+
+  it('会话过期被放弃时，分心次数一并清零', () => {
+    const result = rehydrateSession(
+      { ...running(), interruptions: 5 },
+      T0 + 25 * MIN + 7 * 60 * MIN,
+      S,
+    );
+    expect(result.interruptions).toBe(0);
   });
 });
 

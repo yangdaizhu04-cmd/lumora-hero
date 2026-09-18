@@ -12,9 +12,9 @@ export interface AttentionState {
  * 刻意不做任何评判（不弹警告、不打分）——
  * 番茄工作法的本意是觉察，而不是自责。数字会在回顾面板里呈现。
  */
-export function useAttention(active: boolean): AttentionState {
-  const [count, setCount] = useState(0);
-  const countRef = useRef(0);
+export function useAttention(active: boolean, initialCount = 0): AttentionState {
+  const [count, setCount] = useState(initialCount);
+  const countRef = useRef(initialCount);
 
   useEffect(() => {
     if (!active) return;

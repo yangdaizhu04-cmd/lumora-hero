@@ -23,6 +23,10 @@ export interface PomodoroController {
   progress: number;
   /** 当前循环内已完成的专注次数（用于计算长休） */
   completedFocus: number;
+  /** 恢复会话时带回的分心次数，作为计数起点 */
+  restoredAttention: number;
+  /** 把当前的分心次数同步进会话存档（页面刷新后不丢） */
+  syncInterruptions: (count: number) => void;
   start: () => void;
   pause: () => void;
   toggle: () => void;
@@ -74,6 +78,9 @@ export function usePomodoro(
   const stateRef = useRef(state);
   stateRef.current = state;
 
+  /** 分心次数随会话一起落盘，刷新后接着算 */
+  const interruptionsRef = useRef(bootRef.current.interruptions);
+
   const dispatch = useCallback((event: PomodoroEvent) => {
     const result = transition(stateRef.current, event, settingsRef.current);
 
@@ -106,8 +113,21 @@ export function usePomodoro(
     const signature = `${state.phase}|${state.status}|${state.endAt ?? ''}|${state.completedFocus}`;
     if (signature === signatureRef.current) return;
     signatureRef.current = signature;
-    writeStorage(STORAGE_KEYS.session, serializeSession(stateRef.current, Date.now()));
+    writeStorage(
+      STORAGE_KEYS.session,
+      serializeSession(stateRef.current, Date.now(), interruptionsRef.current),
+    );
   }, [state]);
+
+  /** 分心次数变化时立刻更新存档 */
+  const syncInterruptions = useCallback((count: number) => {
+    if (count === interruptionsRef.current) return;
+    interruptionsRef.current = count;
+    writeStorage(
+      STORAGE_KEYS.session,
+      serializeSession(stateRef.current, Date.now(), count),
+    );
+  }, []);
 
   // 计时循环：200ms 轮询保证边界精度，但状态只在"显示的秒数"变化时更新
   useEffect(() => {
@@ -177,6 +197,8 @@ export function usePomodoro(
     totalMs: state.totalMs,
     progress,
     completedFocus: state.completedFocus,
+    restoredAttention: bootRef.current.interruptions,
+    syncInterruptions,
     start,
     pause,
     toggle,
