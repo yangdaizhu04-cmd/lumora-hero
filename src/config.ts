@@ -27,15 +27,27 @@ export const AUDIO = {
   /** 专注结束 / 休息结束的 duck 持续时长 */
   chimeFocusDuckMs: 3200,
   chimeBreakDuckMs: 2200,
-  /** 合成 pad 的最大音量（自适应音景用） */
-  padMaxLevel: 0.16,
-  /** pad 随专注进度爬升到 maxLevel 的比例 */
-  padFocusRamp: 1,
   /** 空间化左右游移的频率与幅度 */
   spatialSweepHz: 0.02,
   spatialDepth: 0.18,
   /** 自适应音景：专注后期环境音的轻微收敛比例 */
   adaptiveDip: 0.88,
+} as const;
+
+/**
+ * 自适应音景的「垫层」。
+ *
+ * 是**真实录音**（CC0 房间底噪）而不是合成振荡器：原先那版合成低频长音的频谱是
+ * 三条静止的谱线、81% 能量压在 150Hz 以下、1kHz 以上为零 —— 小喇叭放不出来，
+ * 放不出来的低频会变成互调失真，听感就是嗡鸣（详见 开发踩坑点.md 记录 20）。
+ * 现在这版是无音高的宽带噪声：没有音高就不会被当作旋律持续占用注意力。
+ *
+ * 文件：`public/audio/focus-bed.mp3`（27.2s 无缝循环，单声道 96kbps，320KB）
+ */
+export const BED = {
+  src: '/audio/focus-bed.mp3',
+  /** 场景配置里的基准增益：与环境音同量级，实际响度由「垫层强度」乘出来 */
+  gain: 0.9,
 } as const;
 
 export const UX = {
@@ -45,6 +57,8 @@ export const UX = {
   panelSlideMs: 500,
   /** 开始前的准备倒计时（秒），0 表示关闭 */
   ritualSeconds: 3,
+  /** 垫层试听时长（秒） */
+  previewSeconds: 8,
   /** 睡眠定时的淡出时长（分钟） */
   sleepFadeMinutes: 10,
   /**

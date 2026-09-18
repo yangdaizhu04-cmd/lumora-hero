@@ -13,7 +13,10 @@ interface Props {
   deviceHint: string | null;
   /** 睡眠定时剩余毫秒，0 表示未启用 */
   sleepRemainingMs: number;
+  /** 垫层试听进行中 */
+  bedPreview: boolean;
   onChange: (patch: Partial<PomodoroSettings>) => void;
+  onPreviewBed: () => void;
   onNotificationsChange: (enabled: boolean) => void;
   onStartSleep: (minutes: number) => void;
   onCancelSleep: () => void;
@@ -32,7 +35,9 @@ function SettingsDrawerComponent({
   notifyPermission,
   deviceHint,
   sleepRemainingMs,
+  bedPreview,
   onChange,
+  onPreviewBed,
   onNotificationsChange,
   onStartSleep,
   onCancelSleep,
@@ -158,12 +163,38 @@ function SettingsDrawerComponent({
                 label="阶段结束提示音"
               />
             </Row>
-            <Row label="自适应音景" hint="随专注进度缓慢铺入一层低频长音，越投入越沉">
+            <Row label="自适应音景" hint="随专注进度缓慢铺入一层房间底噪，越投入越厚">
               <Toggle
                 checked={settings.adaptiveSound}
                 onChange={(checked) => onChange({ adaptiveSound: checked })}
                 label="自适应音景"
               />
+            </Row>
+            <Row
+              label="垫层强度"
+              hint={`当前 ${Math.round(settings.bedLevel * 100)}% · 拖动即试听`}
+            >
+              <div className="flex shrink-0 items-center gap-2">
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={Math.round(settings.bedLevel * 100)}
+                  onChange={(event) => {
+                    onChange({ bedLevel: Number(event.target.value) / 100 });
+                    onPreviewBed();
+                  }}
+                  aria-label="垫层强度"
+                  className="range-glass w-20 sm:w-24"
+                />
+                <button
+                  type="button"
+                  onClick={onPreviewBed}
+                  className="liquid-glass shrink-0 rounded-full px-3 py-1.5 text-xs transition-opacity duration-300 hover:opacity-75"
+                >
+                  {bedPreview ? '试听中' : '试听'}
+                </button>
+              </div>
             </Row>
             <Row label="空间化" hint="环境音在左右耳之间极缓慢地游移（建议戴耳机）">
               <Toggle

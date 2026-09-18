@@ -13,7 +13,7 @@ import { TaskPanel } from './components/TaskPanel';
 import { TimerDisplay } from './components/TimerDisplay';
 import { TimerRing } from './components/TimerRing';
 import { TopBar } from './components/TopBar';
-import { AUDIO, UX } from './config';
+import { AUDIO, BED, UX } from './config';
 import { PHASE_META } from './data/phases';
 import {
   DEFAULT_SCENE_INDEX,
@@ -84,6 +84,8 @@ export default function App() {
   );
   const [sleepUntil, setSleepUntil] = useState<number | null>(null);
   const [autoLowPower, setAutoLowPower] = useState(false);
+  /** 垫层试听中：临时让它发声，不开始计时也能判断强度是否合适 */
+  const [bedPreview, setBedPreview] = useState(false);
 
   const audio = useAudioEngine();
 
@@ -275,9 +277,10 @@ export default function App() {
   /**
    * 环境音唯一的发声条件：计时真正进行中。
    * 准备倒计时也算"已经按下开始"，此时淡入正好陪用户进入状态；
-   * 待机、暂停一律静音 —— 不会再出现"点一下场景切换器就出声"。
+   * 待机、暂停一律静音（垫层试听是个例外，它本身就是"我要听一下"）。
    */
-  const shouldPlayAmbience = phaseStatus === 'running' || ritual.isActive;
+  const shouldPlayAmbience =
+    phaseStatus === 'running' || ritual.isActive || bedPreview;
   const playStateRef = useRef(shouldPlayAmbience);
   playStateRef.current = shouldPlayAmbience;
 
@@ -336,6 +339,35 @@ export default function App() {
     startTimer,
     settings.ritualEnabled,
   ]);
+
+  /**
+   * 垫层试听：临时让它按设定强度发声几秒。
+   *
+   * 存在的意义是"可调" —— 垫层的合适强度因人而异、因设备而异，
+   * 而它平时只在专注时渐入，跑满一个 25 分钟番茄才能听出效果，根本没法调。
+   */
+  const bedPreviewTimer = useRef<number | null>(null);
+  const handlePreviewBed = useCallback(() => {
+    unlockAudio();
+    wake();
+    setBedPreview(true);
+    if (bedPreviewTimer.current !== null) {
+      window.clearTimeout(bedPreviewTimer.current);
+    }
+    bedPreviewTimer.current = window.setTimeout(() => {
+      bedPreviewTimer.current = null;
+      setBedPreview(false);
+    }, UX.previewSeconds * 1000);
+  }, [unlockAudio, wake]);
+
+  useEffect(
+    () => () => {
+      if (bedPreviewTimer.current !== null) {
+        window.clearTimeout(bedPreviewTimer.current);
+      }
+    },
+    [],
+  );
 
   /**
    * 切场景只换画面与音层配置，不启动声音 ——
@@ -453,6 +485,7 @@ export default function App() {
     const preset: SoundPreset = {
       scene: current.scene.id,
       volume: Math.round(current.settings.volume * 100),
+      bedLevel: Math.round(current.settings.bedLevel * 100),
       nightMode: current.settings.nightModeEnabled,
       autoScene: current.settings.autoScene,
       adaptiveSound: current.settings.adaptiveSound,
@@ -483,10 +516,6 @@ export default function App() {
   }, [audio, scene]);
 
   useEffect(() => {
-    audio.setPadRoot(scene.padRootHz);
-  }, [audio, scene]);
-
-  useEffect(() => {
     audio.setVolume(settings.volume);
   }, [audio, settings.volume]);
 
@@ -498,37 +527,43 @@ export default function App() {
     audio.setSpatial(settings.spatialSound);
   }, [audio, settings.spatialSound]);
 
-  // 自适应音景：pad 随专注进度缓慢渐入；环境音同时轻微收敛
-  const padRatioRef = useRef(-1);
+  /**
+   * 自适应音景：垫层随专注进度缓慢渐入，环境音同时轻微收敛。
+   *
+   * 垫层的响度 = 场景里的基准增益 × 这里的 factor，而 factor = 进度 × 用户设定的强度：
+   * - 只在专注阶段发声（休息、待机一律 0，元素会被真正 pause 掉）
+   * - 试听时直接顶到设定强度，不用跑满一个番茄才知道效果
+   */
   useEffect(() => {
-    const focusProgress =
-      phaseState === 'focus' && phaseStatus !== 'idle' ? progress : 0;
+    const bedFactor = bedPreview
+      ? settings.bedLevel
+      : settings.adaptiveSound && phaseState === 'focus'
+        ? progress * settings.bedLevel
+        : 0;
+    const dipFactor =
+      settings.adaptiveSound && phaseState === 'focus'
+        ? 1 - (1 - AUDIO.adaptiveDip) * progress
+        : 1;
 
-    let target = 0;
-    if (settings.adaptiveSound) {
-      target =
-        phaseState === 'focus'
-          ? focusProgress * AUDIO.padFocusRamp
-          : phaseStatus === 'running'
-            ? 0.05
-            : 0;
-    }
-
-    const changed = Math.abs(target - padRatioRef.current) >= 0.02;
-    if (!changed) return;
-    padRatioRef.current = target;
-    audio.setPadLevel(target, 5);
-  }, [audio, settings.adaptiveSound, phaseState, phaseStatus, progress]);
-
-  useEffect(() => {
     scene.layers.forEach((layer) => {
-      const factor =
-        settings.adaptiveSound && phaseState === 'focus'
-          ? 1 - (1 - AUDIO.adaptiveDip) * progress
-          : 1;
-      audio.setAdaptive(layer.src, factor);
+      const isBed = layer.src === BED.src;
+      audio.setAdaptive(
+        layer.src,
+        isBed ? bedFactor : dipFactor,
+        // 试听是"我现在就要听"，用播放级的快淡入；
+        // 进度驱动的那条保持默认的 6 秒慢斜坡（试听才 8 秒，慢斜坡会把它整个吃掉）
+        isBed && bedPreview ? AUDIO.playFadeInSec : undefined,
+      );
     });
-  }, [audio, scene, settings.adaptiveSound, phaseState, progress]);
+  }, [
+    audio,
+    scene,
+    settings.adaptiveSound,
+    settings.bedLevel,
+    bedPreview,
+    phaseState,
+    progress,
+  ]);
 
   // ---------- 自动场景编排 ----------
   useEffect(() => {
@@ -605,6 +640,7 @@ export default function App() {
     setSettings((prev) => ({
       ...prev,
       volume: preset.volume / 100,
+      bedLevel: preset.bedLevel / 100,
       muted: preset.volume > 0 ? false : prev.muted,
       nightModeEnabled: preset.nightMode,
       autoScene: preset.autoScene,
@@ -875,7 +911,9 @@ export default function App() {
         notifyPermission={notifyPermission}
         deviceHint={deviceHint}
         sleepRemainingMs={sleepUntil ? Math.max(0, sleepUntil - clockTick) : 0}
+        bedPreview={bedPreview}
         onChange={handleSettingsChange}
+        onPreviewBed={handlePreviewBed}
         onNotificationsChange={handleNotificationsChange}
         onStartSleep={handleStartSleep}
         onCancelSleep={handleCancelSleep}

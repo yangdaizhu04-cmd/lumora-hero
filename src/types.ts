@@ -20,10 +20,8 @@ export interface Scene {
   videoUrl: string;
   /** 该场景下的 UI 文字颜色 */
   textColor: string;
-  /** 音景层，可叠加 */
+  /** 音景层，可叠加（含自适应垫层 `BED`，其响度由专注进度单独驱动） */
   layers: AudioLayerConfig[];
-  /** 合成 pad 的基频（Hz），自适应音景会随专注进度让它缓慢渐入 */
-  padRootHz: number;
 }
 
 export interface PomodoroSettings {
@@ -51,8 +49,10 @@ export interface PomodoroSettings {
   nightStartHour: number;
   /** 省电模式：用静态渐变代替背景视频 */
   lowPowerMode: boolean;
-  /** 自适应音景：合成 pad 随专注进度缓慢渐入 */
+  /** 自适应音景：无音高的房间底噪垫层随专注进度缓慢渐入 */
   adaptiveSound: boolean;
+  /** 垫层强度 0–1（只在自适应音景开启时生效） */
+  bedLevel: number;
   /** 空间化：环境音左右缓慢游移 */
   spatialSound: boolean;
 }

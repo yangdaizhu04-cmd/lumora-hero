@@ -1,11 +1,21 @@
-import type { Scene } from '../types';
+import { BED } from '../config';
+import type { AudioLayerConfig, Scene } from '../types';
 
 /**
- * 四个场景的唯一数据源：视频、音景、文字颜色、合成 pad 的基频。
+ * 四个场景的唯一数据源：视频、音景、文字颜色。
  * 新增场景：在此追加一项 + 在 public/audio 放入音频 + 补 SCENE_GRADIENT。
  *
  * 音源均为 CC0（公共领域）录音，来源与剪辑信息见 README.md §音源署名。
  */
+
+/**
+ * 自适应垫层：每个场景都挂上同一层，响度由专注进度单独驱动。
+ *
+ * 它挂在每个场景里（而不是作为独立音源）有个好处：切换场景时它同时属于新旧两边的
+ * 期望音层，引擎不会把它当作"要淡出的旧层"，垫层在场景交叉淡化中保持连续、不被切断。
+ */
+const BED_LAYER: AudioLayerConfig = { src: BED.src, gain: BED.gain, pan: 0 };
+
 export const SCENES: Scene[] = [
   {
     id: 'golden-hour',
@@ -13,8 +23,7 @@ export const SCENES: Scene[] = [
     videoUrl:
       'https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260702_081127_0992a171-d3c6-4978-8213-0ec5df8b6d63.mp4',
     textColor: '#ffffff',
-    layers: [{ src: '/audio/golden-hour.mp3', gain: 0.9, pan: 0 }],
-    padRootHz: 110, // A2
+    layers: [{ src: '/audio/golden-hour.mp3', gain: 0.9, pan: 0 }, BED_LAYER],
   },
   {
     id: 'still-water',
@@ -22,8 +31,7 @@ export const SCENES: Scene[] = [
     videoUrl:
       'https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260702_092026_dd05b805-ea0f-40b2-8c52-332b88502592.mp4',
     textColor: '#ffffff',
-    layers: [{ src: '/audio/still-water.mp3', gain: 1, pan: -0.28 }],
-    padRootHz: 73.42, // D2
+    layers: [{ src: '/audio/still-water.mp3', gain: 1, pan: -0.28 }, BED_LAYER],
   },
   {
     id: 'deep-woods',
@@ -31,8 +39,7 @@ export const SCENES: Scene[] = [
     videoUrl:
       'https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260702_081042_df7202bf-bd80-4b2b-bbc6-1f09ba2870e9.mp4',
     textColor: '#182C41',
-    layers: [{ src: '/audio/deep-woods.mp3', gain: 0.9, pan: 0.22 }],
-    padRootHz: 65.41, // C2
+    layers: [{ src: '/audio/deep-woods.mp3', gain: 0.9, pan: 0.22 }, BED_LAYER],
   },
   {
     id: 'quiet-dawn',
@@ -40,8 +47,7 @@ export const SCENES: Scene[] = [
     videoUrl:
       'https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260702_080959_4cac5234-3573-464e-a5b7-76b94b8a7d61.mp4',
     textColor: '#ffffff',
-    layers: [{ src: '/audio/quiet-dawn.mp3', gain: 0.9, pan: -0.12 }],
-    padRootHz: 98, // G2
+    layers: [{ src: '/audio/quiet-dawn.mp3', gain: 0.9, pan: -0.12 }, BED_LAYER],
   },
 ];
 

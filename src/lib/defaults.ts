@@ -15,6 +15,10 @@ export const DEFAULT_SETTINGS: PomodoroSettings = {
   nightModeEnabled: false,
   nightStartHour: 22,
   lowPowerMode: false,
-  adaptiveSound: true,
+  // 垫层默认关闭：它是"锦上添花"的氛围层，应该由用户主动选择，
+  // 而不是没选就听到（上一版合成低频长音就是默认开着，听感上很打扰）
+  adaptiveSound: false,
+  // 默认强度偏保守（约 -13dB，相对环境音），要更厚可以在设置里调
+  bedLevel: 0.18,
   spatialSound: true,
 };

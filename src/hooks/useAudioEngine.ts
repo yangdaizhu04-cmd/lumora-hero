@@ -15,11 +15,8 @@ export interface AudioApi {
   setVolume: (volume: number) => void;
   setMuted: (muted: boolean) => void;
   setSpatial: (enabled: boolean) => void;
-  /** 自适应音景：按倍率缩放某个音层 */
-  setAdaptive: (src: string, factor: number) => void;
-  /** 合成 pad 的音量与基频 */
-  setPadLevel: (level: number, fadeSec?: number) => void;
-  setPadRoot: (rootHz: number) => void;
+  /** 自适应音景 / 垫层：按倍率缩放某个音层（fadeSec 省略时用 6 秒慢斜坡） */
+  setAdaptive: (src: string, factor: number, fadeSec?: number) => void;
   /** 播放阶段转场钟声，并顺便压低环境音 */
   chime: (kind: ChimeKind) => void;
   /** 播放点击反馈音（未解锁时静默忽略） */
@@ -60,9 +57,7 @@ export function useAudioEngine(): AudioApi {
       setVolume: (volume) => engine.setVolume(volume),
       setMuted: (muted) => engine.setMuted(muted),
       setSpatial: (enabled) => engine.setSpatial(enabled),
-      setAdaptive: (src, factor) => engine.setAdaptive(src, factor),
-      setPadLevel: (level, fadeSec) => engine.setPadLevel(level, fadeSec),
-      setPadRoot: (rootHz) => engine.setPadRoot(rootHz),
+      setAdaptive: (src, factor, fadeSec) => engine.setAdaptive(src, factor, fadeSec),
       chime: (kind) => {
         engine.duck(
           kind === 'focusEnd' ? AUDIO.chimeFocusDuckMs : AUDIO.chimeBreakDuckMs,

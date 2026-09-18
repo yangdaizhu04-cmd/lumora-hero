@@ -48,7 +48,8 @@ Windows 用户也可直接双击 `start-lumora.bat`。
 - **跟随计时状态**：只在专注 / 休息进行中发声（含开始前的准备倒计时），
   待机与暂停会淡出并**真正暂停音频解码**；待机时连 `AudioContext` 都不创建
 - **预热**：解锁后 4 个场景的音层全部加载好，切换是瞬时的
-- **自适应音景**：随专注进度缓慢铺入一层合成的低频长音，越投入越沉
+- **自适应垫层**：随专注进度缓慢铺入一层**真实录音的房间底噪**（无音高），越投入越厚；
+  默认关闭，强度可调，拖动滑杆或点「试听」可以立刻听到效果，不用跑满一个番茄
 - **空间化**：环境音在左右耳之间极缓慢游移（水流偏左、鸟鸣偏右）
 - **自动场景编排**：专注进深林、休息靠水边，夜间休息换成黎明
 - 音量 / 静音 / 提示音开关
@@ -102,12 +103,15 @@ Windows 用户也可直接双击 `start-lumora.bat`。
 
 ## 四场景音景映射
 
-| 场景 | 视觉 | 音景 | 空间位置 | pad 基频 | 明暗 |
-|---|---|---|---|---|---|
-| Golden Hour | 暖金色黄昏 | 黄昏虫鸣 | 居中 | A2 | 浅色文字 |
-| Still Water | 静谧水面 | 平缓水流 | 偏左 | D2 | 浅色文字 |
-| Deep Woods | 幽深森林 | 林间鸟鸣 | 偏右 | C2 | 深色文字 |
-| Quiet Dawn | 清晨黎明 | 清风掠过 | 略偏左 | G2 | 浅色文字 |
+| 场景 | 视觉 | 音景 | 空间位置 | 明暗 |
+|---|---|---|---|---|
+| Golden Hour | 暖金色黄昏 | 黄昏虫鸣 | 居中 | 浅色文字 |
+| Still Water | 静谧水面 | 平缓水流 | 偏左 | 浅色文字 |
+| Deep Woods | 幽深森林 | 林间鸟鸣 | 偏右 | 深色文字 |
+| Quiet Dawn | 清晨黎明 | 清风掠过 | 略偏左 | 浅色文字 |
+
+> 四个场景各自再叠一层**自适应垫层**（`focus-bed.mp3`，CC0 房间底噪）。它挂在每个场景里，
+> 但响度只由专注进度与「垫层强度」决定 —— 切场景不会把它切断，也不会跟着场景换音色。
 
 ---
 
@@ -115,7 +119,7 @@ Windows 用户也可直接双击 `start-lumora.bat`。
 
 - React 18 + TypeScript + Vite 6
 - Tailwind CSS 4（`@tailwindcss/vite`）+ lucide-react
-- 原生 Web Audio API：多层环境音、交叉淡化、duck、空间化、合成 pad 与钟声
+- 原生 Web Audio API：多层环境音、交叉淡化、duck、空间化与合成钟声
 - PWA：手写 Service Worker（无插件），缓存策略见 `public/sw.js`
 - 测试：Vitest（纯函数）+ 浏览器端到端验证
 - **生产依赖零新增**（React 之外只有 lucide-react）
@@ -143,8 +147,7 @@ src/
     useClockTick.ts          # 分钟级时钟（夜间模式 / 睡眠倒计时）
     usePrefersReducedMotion.ts
   audio/
-    engine.ts                # 音频引擎：预热、分层、空间化、duck、睡眠淡出
-    pad.ts                   # 合成 pad（自适应音景）
+    engine.ts                # 音频引擎：预热、分层、空间化、duck、睡眠淡出、垫层倍率
     chime.ts                 # 转场钟声、点击音、声化日报动机
   lib/
     pomodoroMachine.ts       # 纯函数状态机（23 个测试覆盖全转移）
@@ -176,6 +179,7 @@ public/
 | Still Water | `still-water.mp3` | [Relaxing River Sound](https://freesound.org/s/722875/) | [IceVFX](https://freesound.org/people/IceVFX/) |
 | Deep Woods | `deep-woods.mp3` | [Forest quiet atmosphere with some birds](https://freesound.org/s/414098/) | [felix.blume](https://freesound.org/people/felix.blume/) |
 | Quiet Dawn | `quiet-dawn.mp3` | [Wind on bushes, close to desert ground](https://freesound.org/s/711106/) | [felix.blume](https://freesound.org/people/felix.blume/) |
+| 自适应垫层 | `focus-bed.mp3` | [RoomTone07](https://freesound.org/s/474832/) | [richwise](https://freesound.org/people/richwise/) |
 
 循环剪辑取自开源项目 [funcoder/omarchy-ambient](https://github.com/funcoder/omarchy-ambient)；
 本项目为压缩体积与全平台兼容，用 ffmpeg 转码为 96kbps / 48kHz / 立体声 mp3（30MB → 11.5MB）。

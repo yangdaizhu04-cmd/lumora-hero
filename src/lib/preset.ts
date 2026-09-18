@@ -1,4 +1,5 @@
 import { SCENES } from '../data/scenes';
+import { DEFAULT_SETTINGS } from './defaults';
 import type { SceneId } from '../types';
 
 /**
@@ -9,6 +10,8 @@ export interface SoundPreset {
   scene: SceneId;
   /** 音量 0–100 */
   volume: number;
+  /** 垫层强度 0–100 */
+  bedLevel: number;
   nightMode: boolean;
   autoScene: boolean;
   adaptiveSound: boolean;
@@ -66,6 +69,14 @@ export function decodePreset(text: string): SoundPreset | null {
   return {
     scene: candidate.scene as SceneId,
     volume: Math.max(0, Math.min(100, Math.round(candidate.volume))),
+    // 旧链接没有这个字段，回落到默认强度
+    bedLevel: Math.max(
+      0,
+      Math.min(
+        100,
+        Math.round(candidate.bedLevel ?? DEFAULT_SETTINGS.bedLevel * 100),
+      ),
+    ),
     nightMode: candidate.nightMode === true,
     autoScene: candidate.autoScene === true,
     adaptiveSound: candidate.adaptiveSound === true,

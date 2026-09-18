@@ -1,7 +1,6 @@
 import { AUDIO } from '../config';
 import { clamp } from '../lib/time';
 import type { AudioLayerConfig } from '../types';
-import { SynthPad } from './pad';
 
 interface Layer {
   audio: HTMLAudioElement;
@@ -25,8 +24,9 @@ interface NetworkInformation {
  * 环境音引擎。
  *
  * 链路：HTMLAudioElement(loop) → layerGain → stereoPanner → master → sleepGain → destination
- *                                        ↑
- *                              合成 pad ──┘（自适应音景）
+ *
+ * 所有音层（含自适应垫层）走的是同一条链路：它们是 `HTMLAudioElement` + 增益，
+ * 靠 `setAdaptive(src, factor)` 缩放，没有额外的合成音源。
  *
  * 三个关键设计：
  * 1. **预热**：解锁时把全部场景的音层都建好（音量 0、暂停），切场景只改增益，切换是瞬时的；
@@ -41,11 +41,21 @@ export class AmbienceEngine {
   private master: GainNode | null = null;
   /** 睡眠定时的独立音量比例（1 → 0），与主音量自动化互不干扰 */
   private sleepGain: GainNode | null = null;
-  private pad: SynthPad | null = null;
 
   private layers = new Map<string, Layer>();
   /** src → 该层的场景配置（用于预热与基准音量） */
   private registry = new Map<string, AudioLayerConfig>();
+
+  /**
+   * 每个音源的"目标倍率"（自适应/垫层）。
+   *
+   * 为什么要单独记住：音层是**解锁时**才创建的，比 `setAdaptive` 的第一次调用晚。
+   * 不记住的话会有两个后果：
+   * 1. 音层还没建时的那次调用直接丢失，之后不会补上；
+   * 2. `ensureLayer` 新建音层时默认倍率是 1（对场景层是对的），垫层的正确倍率却可能是 0 ——
+   *    实测会让垫层在专注刚开始的 1 秒里冒出 0.53 增益的声音。
+   */
+  private adaptiveTargets = new Map<string, number>();
 
   private desired: AudioLayerConfig[] = [];
   private desiredKey = '';
@@ -70,9 +80,6 @@ export class AmbienceEngine {
   private spatialEnabled = false;
   private spatialLfo: OscillatorNode | null = null;
   private spatialDepth: GainNode | null = null;
-
-  private padRootHz = 98;
-  private padLevel = 0;
 
   private disposed = false;
 
@@ -119,9 +126,6 @@ export class AmbienceEngine {
       this.sleepGain = this.ctx.createGain();
       this.master.connect(this.sleepGain);
       this.sleepGain.connect(this.ctx.destination);
-
-      this.pad = new SynthPad(this.ctx, this.master);
-      this.pad.setRoot(this.padRootHz);
     }
 
     if (this.ctx.state === 'suspended') {
@@ -135,8 +139,6 @@ export class AmbienceEngine {
     this.ensureRegistryLayers();
     this.applySceneLayers(AUDIO.sceneFadeSec);
     this.applySpatial();
-    this.pad?.setRoot(this.padRootHz);
-    this.pad?.setLevel(this.shouldSilence ? 0 : this.padLevel, 3);
     this.applyMasterGain(AUDIO.playFadeInSec);
   }
 
@@ -144,8 +146,6 @@ export class AmbienceEngine {
     this.stopAll();
     if (this.duckTimer !== null) window.clearTimeout(this.duckTimer);
     if (this.sleepTimer !== null) window.clearTimeout(this.sleepTimer);
-    this.pad?.dispose();
-    this.pad = null;
     this.layers.clear();
     this.ctx?.close().catch(() => undefined);
     this.ctx = null;
@@ -191,26 +191,20 @@ export class AmbienceEngine {
     this.applySceneLayers(fadeSec);
   }
 
-  /** 自适应音景：按专注进度缩放某个音层 */
-  setAdaptive(src: string, factor: number): void {
-    const layer = this.layers.get(src);
-    if (!layer) return;
+  /**
+   * 自适应音景：按倍率缩放某个音层。
+   * `fadeSec` 默认 6 秒 —— 随专注进度漂移本来就该慢；试听这类"我现在就要听"的场景
+   * 需要传更短的淡入，否则 6 秒的斜坡会把只有几秒的试听整个吃掉。
+   */
+  setAdaptive(src: string, factor: number, fadeSec = 6): void {
     const next = clamp(factor, 0, 1);
+    this.adaptiveTargets.set(src, next);
+
+    const layer = this.layers.get(src);
+    if (!layer) return; // 还没解锁：值已记下，建音层时会用它作为初始倍率
     if (Math.abs(next - layer.adaptive) < 0.005) return;
     layer.adaptive = next;
-    this.applyLayerGains(6);
-  }
-
-  /** 合成 pad 的目标音量与基频 */
-  setPadLevel(level: number, fadeSec = 4): void {
-    this.padLevel = clamp(level, 0, 1);
-    if (this.shouldSilence) return;
-    this.pad?.setLevel(this.padLevel, fadeSec);
-  }
-
-  setPadRoot(rootHz: number): void {
-    this.padRootHz = rootHz;
-    this.pad?.setRoot(rootHz);
+    this.applyLayerGains(fadeSec);
   }
 
   // ---------- 音量 ----------
@@ -250,7 +244,6 @@ export class AmbienceEngine {
     const fade = playing ? AUDIO.playFadeInSec : AUDIO.playFadeOutSec;
     this.applyLayerGains(fade);
     this.applyMasterGain(fade);
-    this.pad?.setLevel(playing ? this.padLevel : 0, fade);
   }
 
   /** 临时压低环境音，用于提示音/阶段播报 */
@@ -286,7 +279,6 @@ export class AmbienceEngine {
       this.sleepTimer = null;
       this.sleeping = true;
       this.layers.forEach((layer) => layer.audio.pause());
-      this.pad?.setLevel(0, 1);
     }, seconds * 1000);
   }
 
@@ -312,7 +304,6 @@ export class AmbienceEngine {
 
     if (wasSleeping) {
       this.applySceneLayers(AUDIO.sceneFadeSec);
-      this.pad?.setLevel(this.padLevel, 3);
     }
     this.applyMasterGain(AUDIO.sceneFadeSec);
   }
@@ -395,7 +386,8 @@ export class AmbienceEngine {
       gain,
       panner,
       level,
-      adaptive: 1,
+      // 用已记录的目标倍率起步；从未被设置过的（场景层）是 1
+      adaptive: this.adaptiveTargets.get(src) ?? 1,
       pan,
       stopTimer: null,
     };

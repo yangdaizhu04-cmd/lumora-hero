@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { decodePreset, encodePreset, type SoundPreset } from './preset';
+import { DEFAULT_SETTINGS } from './defaults';
 import type { SceneId } from '../types';
 
 const PRESET: SoundPreset = {
   scene: 'deep-woods',
   volume: 70,
+  bedLevel: 30,
   nightMode: false,
   autoScene: true,
   adaptiveSound: true,
@@ -47,7 +49,7 @@ describe('音景配方编解码', () => {
     expect(quiet?.volume).toBe(0);
   });
 
-  it('缺失的布尔字段按 false 处理', () => {
+  it('缺失的布尔字段按 false 处理，垫层强度回落到默认值', () => {
     const minimal = encodePreset({
       scene: 'still-water',
       volume: 50,
@@ -55,11 +57,17 @@ describe('音景配方编解码', () => {
     expect(decodePreset(minimal)).toEqual({
       scene: 'still-water',
       volume: 50,
+      bedLevel: Math.round(DEFAULT_SETTINGS.bedLevel * 100),
       nightMode: false,
       autoScene: false,
       adaptiveSound: false,
       spatialSound: false,
     });
+  });
+
+  it('垫层强度超出范围会被夹回 0–100', () => {
+    expect(decodePreset(encodePreset({ ...PRESET, bedLevel: 999 }))?.bedLevel).toBe(100);
+    expect(decodePreset(encodePreset({ ...PRESET, bedLevel: -5 }))?.bedLevel).toBe(0);
   });
 
   it('中文内容（未来扩展）不会破坏编解码', () => {
