@@ -44,11 +44,13 @@ export function SceneBackground({ scenes, activeIndex, mode }: Props) {
   // 最近用过的场景保留在 DOM 里（LRU），避免来回切换时反复下载
   useEffect(() => {
     setMountedIndexes((prev) => {
-      const next = [
-        activeIndex,
-        displayedIndex,
-        ...prev.filter((index) => index !== activeIndex && index !== displayedIndex),
-      ].slice(0, MAX_MOUNTED);
+      // 先 Set 去重：activeIndex 与 displayedIndex 绝大多数时候是同一个值，
+      // 直接拼接会得到重复项 —— 那会渲染出两个同 key 的 <video>（React 报 key 冲突，
+      // 还白跑一路解码）。浏览器验证时发现的。
+      const next = Array.from(new Set([activeIndex, displayedIndex, ...prev])).slice(
+        0,
+        MAX_MOUNTED,
+      );
       return next.length === prev.length && next.every((value, i) => value === prev[i])
         ? prev
         : next;

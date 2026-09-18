@@ -57,7 +57,8 @@ export class ErrorBoundary extends Component<Props, State> {
       >
         <h1 className="text-lg">出了点问题</h1>
         <p className="max-w-md text-sm leading-relaxed text-white/60">
-          页面在渲染时遇到异常。你的数据还在本地存储里 —— 可以先导出备份，再重置数据重启。
+          页面在渲染时遇到异常。你的数据还在本地存储里 ——
+          可以先导出备份，再重置数据重启。
         </p>
         <pre className="max-h-24 max-w-md overflow-auto rounded-xl bg-white/[0.06] px-3 py-2 text-left text-[11px] text-white/45">
           {this.state.error.message}

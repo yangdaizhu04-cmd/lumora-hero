@@ -66,7 +66,9 @@ describe('音景配方编解码', () => {
   });
 
   it('垫层强度超出范围会被夹回 0–100', () => {
-    expect(decodePreset(encodePreset({ ...PRESET, bedLevel: 999 }))?.bedLevel).toBe(100);
+    expect(decodePreset(encodePreset({ ...PRESET, bedLevel: 999 }))?.bedLevel).toBe(
+      100,
+    );
     expect(decodePreset(encodePreset({ ...PRESET, bedLevel: -5 }))?.bedLevel).toBe(0);
   });
 

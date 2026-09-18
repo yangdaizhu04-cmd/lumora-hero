@@ -41,8 +41,11 @@ export function PhaseToast({ toast, onDismiss }: Props) {
   if (!toast) return null;
 
   return (
+    // z-[100]：必须在抽屉（z-90）与它的遮罩（z-80）之上 ——
+    // 否则"删除任务 → 撤销"这条链路里，撤销按钮会被遮罩挡住点不到（真机验证发现）。
+    // 容器仍是 pointer-events-none，只有按钮自己接收点击。
     <div
-      className="pointer-events-none fixed inset-0 z-[70] flex items-center justify-center"
+      className="pointer-events-none fixed inset-0 z-[100] flex items-center justify-center"
       role="status"
       aria-live="polite"
     >

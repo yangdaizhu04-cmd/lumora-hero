@@ -387,12 +387,17 @@ export class AmbienceEngine {
 
     const idle = (
       window as unknown as {
-        requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+        requestIdleCallback?: (
+          callback: () => void,
+          options?: { timeout: number },
+        ) => number;
       }
     ).requestIdleCallback;
 
     this.warmHandle =
-      typeof idle === 'function' ? idle(run, { timeout: 4000 }) : window.setTimeout(run, 2500);
+      typeof idle === 'function'
+        ? idle(run, { timeout: 4000 })
+        : window.setTimeout(run, 2500);
   }
 
   private cancelWarmup(): void {

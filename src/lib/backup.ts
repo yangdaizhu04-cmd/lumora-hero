@@ -65,7 +65,10 @@ function sanitizeSettings(value: unknown): PomodoroSettings | null {
     volume: num(value.volume, fallback.volume, 0, 1),
     muted: bool(value.muted, fallback.muted),
     chimeEnabled: bool(value.chimeEnabled, fallback.chimeEnabled),
-    notificationsEnabled: bool(value.notificationsEnabled, fallback.notificationsEnabled),
+    notificationsEnabled: bool(
+      value.notificationsEnabled,
+      fallback.notificationsEnabled,
+    ),
     ritualEnabled: bool(value.ritualEnabled, fallback.ritualEnabled),
     autoScene: bool(value.autoScene, fallback.autoScene),
     nightModeEnabled: bool(value.nightModeEnabled, fallback.nightModeEnabled),
@@ -128,9 +131,7 @@ function sanitizeArchive(value: unknown): DayArchive[] | null {
       updatedAt: num(raw.updatedAt, 0, 0, MAX_TIMESTAMP),
     });
   });
-  return days
-    .sort((a, b) => (a.date < b.date ? 1 : -1))
-    .slice(0, LIMITS.archiveDays);
+  return days.sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, LIMITS.archiveDays);
 }
 
 function sanitizeLog(value: unknown): FocusLogEntry[] | null {
@@ -186,7 +187,9 @@ function sanitizeValue(key: string, value: unknown): unknown {
       return typeof value === 'string' && DATE_KEY.test(value) ? value : undefined;
     // 会话的结构由 rehydrateSession 校验（非法数据会退回初始状态），这里只挡住非对象
     case STORAGE_KEYS.session:
-      return isRecord(value) && PHASES.has(String(value.phase)) && STATUSES.has(String(value.status))
+      return isRecord(value) &&
+        PHASES.has(String(value.phase)) &&
+        STATUSES.has(String(value.status))
         ? value
         : undefined;
     default:

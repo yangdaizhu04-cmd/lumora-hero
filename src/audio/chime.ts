@@ -49,7 +49,14 @@ export function playTick(ctx: AudioContext, up: boolean): void {
   const bus = ctx.createGain();
   bus.gain.value = 0.35;
   bus.connect(ctx.destination);
-  const stopAt = bell(ctx, bus, up ? NOTE.E5 : NOTE.C5, ctx.currentTime + 0.01, 0.5, 0.12);
+  const stopAt = bell(
+    ctx,
+    bus,
+    up ? NOTE.E5 : NOTE.C5,
+    ctx.currentTime + 0.01,
+    0.5,
+    0.12,
+  );
   releaseBus(ctx, bus, stopAt);
 }
 

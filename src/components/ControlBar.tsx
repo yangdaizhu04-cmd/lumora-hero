@@ -30,7 +30,13 @@ function ControlBarComponent({
   onSkip,
   onExtend,
 }: Props) {
-  const toggleLabel = isPreparing ? '取消准备' : isRunning ? '暂停' : isPaused ? '继续' : startLabel;
+  const toggleLabel = isPreparing
+    ? '取消准备'
+    : isRunning
+      ? '暂停'
+      : isPaused
+        ? '继续'
+        : startLabel;
 
   return (
     <div className="mt-8 flex items-center justify-center gap-3 sm:gap-5">

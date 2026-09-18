@@ -74,9 +74,7 @@ export function countThisWeek(log: FocusLogEntry[], now = new Date()): number {
 
   const startKey = dayKey(start);
   const todayKey = dayKey(now);
-  return log.filter(
-    (entry) => entry.date >= startKey && entry.date <= todayKey,
-  ).length;
+  return log.filter((entry) => entry.date >= startKey && entry.date <= todayKey).length;
 }
 
 export interface HeatCell {

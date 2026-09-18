@@ -16,7 +16,7 @@ npm install
 npm run dev      # 开发服务器 http://localhost:5173
 npm run build    # 类型检查 + 生产构建
 npm run preview  # 预览构建产物（Service Worker 只在这里生效）
-npm test         # 单元测试（80 个）
+npm test         # 单元测试（119 个）
 npm run lint     # ESLint
 npm run format   # Prettier 格式化
 ```
@@ -38,6 +38,8 @@ Windows 用户也可直接双击 `start-lumora.bat`。
   哪怕刷新或崩溃恢复，回来时剩余时间仍然准确；离开期间刚好结束的专注会被补记
 - 细线进度环 + 巨型衬线数字（定宽渲染，数字不跳动）
 - **开始前的 3 秒准备**：给大脑一个进入状态的信号（可关）
+- **延长 5 分钟**：运行中 / 暂停中可给当前阶段续时间（总时长同步加长，进度环不跳变）
+- **误触保护**：计时进行中切换阶段会被拦下并提示，不会静默丢掉这一段
 - 阶段结束：合成钟声 + 中央提示（环境音自动压低 duck）
 - 系统媒体控制：**耳机上的播放/暂停键、锁屏控件都能控制番茄钟**，锁屏显示剩余进度
 - 窗口标题实时倒计时
@@ -57,9 +59,12 @@ Windows 用户也可直接双击 `start-lumora.bat`。
 ### 今日意图与回顾
 
 - 添加 / 删除 / 勾选，可设预估番茄数；点任务设为「进行中」，番茄完成后自动 +1
+- **删除可撤销**：删除后 6 秒内一键恢复（含当天的归档记录）
 - 跳过阶段不计入统计与任务进度
 - **跨天自动归档**：未完成任务标记为「未完成」并顺延，已完成任务移出工作列表
 - **回顾页**：按天展示任务快照 + 番茄数 + 离开次数，往期未完成项标注「已顺延」
+- **12 周热力图**：回顾页顶部一眼看到最近三个月的节奏
+- **CSV 导出**：把专注日志导出成表格，方便在 Excel / Notion 里继续分析
 - **分心自察**：专注期间统计切走标签页的次数，只呈现不评判
 
 ### 本地洞察（离线、无需模型）
@@ -73,16 +78,21 @@ Windows 用户也可直接双击 `start-lumora.bat`。
 
 - **夜间模式**：自动降亮度、静音钟声、偏向 Quiet Dawn（起始时间可设）
 - **睡眠定时**：15 / 30 / 60 分钟内让环境音缓慢淡出并停止，适合睡前收尾
-- **省电模式**：低电量或省流环境下自动改用静态渐变背景，也可手动强制
+- **省电模式**：低电量或省流环境下自动改用静态渐变背景，也可手动强制；
+  提示会区分「手动开启 / 电量偏低 / 省流」三种来源，不会误报成电量问题
 - 尊重 `prefers-reduced-motion`
 
 ### 数据与工程
 
 - 数据全部本地存储（`localStorage`），**零后端、零上传**
-- **导出 / 导入备份**（JSON），可在设备间迁移
+- **导出 / 导入备份**（JSON）与 **CSV 导出**；可一键清空专注记录或全部数据
+- **导入校验**：备份里的每个字段都会逐项校验，非法值回落到默认值，而不是把应用写崩
+- **错误边界**：真出异常时能先导出数据再重置，不会白屏丢数据
+- 多标签页打开同一份数据时会跟随同步，不会静默互相覆盖
 - **音景配方分享**：把当前氛围编码成链接（`#p=…`），对方打开即还原
-- **PWA**：可安装到桌面，**实测离线可打开**（应用外壳与音频走缓存，视频交给浏览器缓存）
-- 80 个单元测试 + ESLint + Prettier
+- **PWA**：可安装到桌面（含 iOS PNG 图标与桌面快捷方式），**实测离线可打开**
+  （应用外壳与音频走缓存，视频交给浏览器缓存）；**新版本会提示「点一下刷新」**，不再静默停留在旧代码
+- 119 个单元测试（纯函数 + hooks）+ ESLint + Prettier + GitHub Actions CI
 
 ---
 
@@ -120,9 +130,9 @@ Windows 用户也可直接双击 `start-lumora.bat`。
 - React 18 + TypeScript + Vite 6
 - Tailwind CSS 4（`@tailwindcss/vite`）+ lucide-react
 - 原生 Web Audio API：多层环境音、交叉淡化、duck、空间化与合成钟声
-- PWA：手写 Service Worker（无插件），缓存策略见 `public/sw.js`
-- 测试：Vitest（纯函数）+ 浏览器端到端验证
-- **生产依赖零新增**（React 之外只有 lucide-react）
+- PWA：手写 Service Worker（无插件），缓存策略见 `public/sw.js`；更新需用户确认（`src/lib/swUpdate.ts`）
+- 测试：Vitest（纯函数 + hooks 走 jsdom）+ 真实浏览器端到端验证
+- **生产依赖零新增**（React 之外只有 lucide-react；jsdom / Testing Library 只在 devDependencies）
 
 ---
 
@@ -130,40 +140,48 @@ Windows 用户也可直接双击 `start-lumora.bat`。
 
 ```
 src/
-  App.tsx                    # 布局 + 状态编排 + 快捷键
+  App.tsx                    # 布局 + 状态编排（快捷键 / 专注模式 / 角标 / 自动场景已抽成 hook）
   config.ts                  # 所有可调参数集中在这里
   types.ts                   # 全局类型
   data/
-    scenes.ts                # 场景数据源 + 阶段→场景编排规则
+    scenes.ts                # 场景唯一数据源（视频 + 音景 + 兜底渐变 + 可读性遮罩）
     phases.ts                # 阶段元数据
   hooks/
     usePomodoro.ts           # 计时状态机绑定 + 会话持久化
-    useTasks.ts              # 今日意图 + 跨天归档
-    useFocusLog.ts           # 专注日志与统计派生
+    useTasks.ts              # 今日意图 + 跨天归档 + 撤销删除
+    useFocusLog.ts           # 专注日志与统计派生（接分钟级时钟，跨零点自动刷新）
     useAudioEngine.ts        # 音频引擎 React 绑定
     useAttention.ts          # 分心自察
     useMediaSession.ts       # 耳机按键 / 锁屏
     useRitual.ts             # 开始前准备倒计时
-    useClockTick.ts          # 分钟级时钟（夜间模式 / 睡眠倒计时）
+    useClockTick.ts          # 分钟级时钟（夜间模式 / 睡眠倒计时 / 统计刷新）
+    useKeyboardShortcuts.ts  # 全局快捷键（处理函数走 ref，监听器只挂一次）
+    useFocusMode.ts          # 专注模式 + 浏览器全屏同步
+    useAutoScene.ts          # 阶段 → 场景自动编排
+    useAppBadge.ts           # PWA 图标角标
     usePrefersReducedMotion.ts
   audio/
-    engine.ts                # 音频引擎：预热、分层、空间化、duck、睡眠淡出、垫层倍率
-    chime.ts                 # 转场钟声、点击音、声化日报动机
+    engine.ts                # 音频引擎：当前场景即时可用、其余空闲预热、空间化、duck、睡眠淡出
+    chime.ts                 # 转场钟声、点击音、声化日报动机（节点用完即释放）
   lib/
-    pomodoroMachine.ts       # 纯函数状态机（23 个测试覆盖全转移）
+    pomodoroMachine.ts       # 纯函数状态机（含 EXTEND，28 个测试覆盖全转移）
     session.ts               # 会话序列化与恢复
-    stats.ts  review.ts      # 统计与按天回顾聚合
+    stats.ts  review.ts      # 统计 / 按天回顾 / 热力图数据 / 周目标
     insights.ts              # 本地启发式洞察
+    csv.ts                   # 专注日志 CSV 导出
     preset.ts                # 音景配方编解码
-    backup.ts                # 数据导出 / 导入
-    device.ts                # 低电量 / 省流检测
+    backup.ts                # 数据导出 / 导入（逐字段校验）+ 清空数据
+    swUpdate.ts              # 新版本就绪检测与用户确认刷新
+    ui.ts                    # 共享 UI 常量（字体栈、快捷键文案）
+    device.ts                # 低电量 / 省流检测（手动 / 电量 / 省流三态提示）
     notify.ts  storage.ts  time.ts  id.ts  defaults.ts
-  components/                # 13 个展示组件（多数做了 memo）
+  components/                # 18 个展示组件（多数做了 memo）
 public/
-  audio/                     # 4 段环境音（CC0）
+  audio/                     # 4 段环境音 + 自适应垫层（CC0）
   fonts/                     # 自托管 Instrument Serif（43KB）
   overlay.webp               # 浮层图（原 1.9MB PNG → 195KB）
-  icon.svg  manifest.webmanifest  sw.js
+  icon.svg  icon-192.png  icon-512.png  apple-touch-icon.png
+  manifest.webmanifest  sw.js
 ```
 
 ---
@@ -220,5 +238,9 @@ public/
 - [x] **健壮性**（资源本地化、会话持久化、视频兜底、PWA 离线）
 - [x] **夜间灵感十二项**（Media Session、自动场景、自适应音景、空间化、夜间模式、
       睡眠定时、分心自察、低电量省电、启动仪式、本地洞察、声化日报、音景分享、数据备份）
-- [ ] 可选：多端同步（WebDAV）、日志导出 CSV、白噪音混音器 UI
+- [x] **可用性打磨**（删除撤销、延长 5 分钟、周目标、12 周热力图、CSV 导出、数据清空）
+- [x] **性能与流量**（视频按需挂载、音频空闲预热、CDN 预连接、写盘去抖）
+- [x] **工程化**（导入逐字段校验、错误边界、多标签同步、SW 更新提示、
+      hooks 测试 119 个、GitHub Actions CI）
+- [ ] 可选：多端同步（WebDAV）、白噪音混音器 UI、任务编辑与排序
 - [ ] 实验分支：本地 LLM 总结回顾（`WebLLM`，需下载 1–2GB 模型，**不建议进主线**，理由见交接文档）

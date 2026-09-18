@@ -72,10 +72,7 @@ export function decodePreset(text: string): SoundPreset | null {
     // 旧链接没有这个字段，回落到默认强度
     bedLevel: Math.max(
       0,
-      Math.min(
-        100,
-        Math.round(candidate.bedLevel ?? DEFAULT_SETTINGS.bedLevel * 100),
-      ),
+      Math.min(100, Math.round(candidate.bedLevel ?? DEFAULT_SETTINGS.bedLevel * 100)),
     ),
     nightMode: candidate.nightMode === true,
     autoScene: candidate.autoScene === true,

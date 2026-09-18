@@ -30,7 +30,8 @@ export const SCENES: Scene[] = [
       'https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260702_081127_0992a171-d3c6-4978-8213-0ec5df8b6d63.mp4',
     textColor: '#ffffff',
     layers: [{ src: '/audio/golden-hour.mp3', gain: 0.9, pan: 0 }, BED_LAYER],
-    gradient: 'linear-gradient(160deg, #f6c99a 0%, #e39a6b 34%, #a85f57 68%, #3c2e40 100%)',
+    gradient:
+      'linear-gradient(160deg, #f6c99a 0%, #e39a6b 34%, #a85f57 68%, #3c2e40 100%)',
     overlay: DARK_OVERLAY,
   },
   {
@@ -40,7 +41,8 @@ export const SCENES: Scene[] = [
       'https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260702_092026_dd05b805-ea0f-40b2-8c52-332b88502592.mp4',
     textColor: '#ffffff',
     layers: [{ src: '/audio/still-water.mp3', gain: 1, pan: -0.28 }, BED_LAYER],
-    gradient: 'linear-gradient(160deg, #cfe4ea 0%, #8fb6c4 38%, #4f7d92 70%, #22394a 100%)',
+    gradient:
+      'linear-gradient(160deg, #cfe4ea 0%, #8fb6c4 38%, #4f7d92 70%, #22394a 100%)',
     overlay: DARK_OVERLAY,
   },
   {
@@ -50,7 +52,8 @@ export const SCENES: Scene[] = [
       'https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260702_081042_df7202bf-bd80-4b2b-bbc6-1f09ba2870e9.mp4',
     textColor: '#182C41',
     layers: [{ src: '/audio/deep-woods.mp3', gain: 0.9, pan: 0.22 }, BED_LAYER],
-    gradient: 'linear-gradient(160deg, #d8e3d2 0%, #9ab393 36%, #5b7d63 68%, #22331f 100%)',
+    gradient:
+      'linear-gradient(160deg, #d8e3d2 0%, #9ab393 36%, #5b7d63 68%, #22331f 100%)',
     overlay: LIGHT_OVERLAY,
   },
   {
@@ -60,7 +63,8 @@ export const SCENES: Scene[] = [
       'https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260702_080959_4cac5234-3573-464e-a5b7-76b94b8a7d61.mp4',
     textColor: '#ffffff',
     layers: [{ src: '/audio/quiet-dawn.mp3', gain: 0.9, pan: -0.12 }, BED_LAYER],
-    gradient: 'linear-gradient(160deg, #f3e3d6 0%, #d8b6ad 34%, #8a7f9c 68%, #2c2c44 100%)',
+    gradient:
+      'linear-gradient(160deg, #f3e3d6 0%, #d8b6ad 34%, #8a7f9c 68%, #2c2c44 100%)',
     overlay: DARK_OVERLAY,
   },
 ];

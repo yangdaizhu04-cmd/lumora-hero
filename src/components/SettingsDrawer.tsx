@@ -1,5 +1,13 @@
 import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Download, FileSpreadsheet, Link2, Moon, Trash2, Upload, X } from 'lucide-react';
+import {
+  Download,
+  FileSpreadsheet,
+  Link2,
+  Moon,
+  Trash2,
+  Upload,
+  X,
+} from 'lucide-react';
 import { clamp, formatRemainingMinutes } from '../lib/time';
 import { DEFAULT_SETTINGS } from '../lib/defaults';
 import { SANS, SHORTCUT_HINT } from '../lib/ui';
@@ -399,7 +407,9 @@ function SettingsDrawerComponent({
                 className="flex flex-1 items-center justify-center gap-1.5 rounded-full py-2.5 text-xs transition-colors duration-300 disabled:opacity-35"
                 style={{
                   background:
-                    pendingClear === 'log' ? 'rgba(214,88,68,0.82)' : 'rgba(255,255,255,0.06)',
+                    pendingClear === 'log'
+                      ? 'rgba(214,88,68,0.82)'
+                      : 'rgba(255,255,255,0.06)',
                 }}
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -411,7 +421,9 @@ function SettingsDrawerComponent({
                 className="flex flex-1 items-center justify-center gap-1.5 rounded-full py-2.5 text-xs transition-colors duration-300"
                 style={{
                   background:
-                    pendingClear === 'all' ? 'rgba(214,88,68,0.82)' : 'rgba(255,255,255,0.06)',
+                    pendingClear === 'all'
+                      ? 'rgba(214,88,68,0.82)'
+                      : 'rgba(255,255,255,0.06)',
                 }}
               >
                 <Trash2 className="h-3.5 w-3.5" />

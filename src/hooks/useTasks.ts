@@ -213,7 +213,9 @@ export function useTasks(options: Options = {}): TasksApi {
     lastRemovedRef.current = null;
 
     const { task, date } = snapshot;
-    setTasks((prev) => (prev.some((item) => item.id === task.id) ? prev : [...prev, task]));
+    setTasks((prev) =>
+      prev.some((item) => item.id === task.id) ? prev : [...prev, task],
+    );
     // 已完成的任务在勾选时入过档，删除时被一并移除 —— 撤销要把它放回去
     if (task.done) {
       setArchive((prev) => upsertArchiveTasks(prev, date, [toArchived(task, 'done')]));

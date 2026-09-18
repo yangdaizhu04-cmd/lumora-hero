@@ -16,11 +16,7 @@ import { TopBar } from './components/TopBar';
 import { UpdateBanner } from './components/UpdateBanner';
 import { AUDIO, BED, UX } from './config';
 import { PHASE_META } from './data/phases';
-import {
-  DEFAULT_SCENE_INDEX,
-  SCENES,
-  sceneIndexById,
-} from './data/scenes';
+import { DEFAULT_SCENE_INDEX, SCENES, sceneIndexById } from './data/scenes';
 import { useAppBadge } from './hooks/useAppBadge';
 import { useAttention } from './hooks/useAttention';
 import { useAudioEngine } from './hooks/useAudioEngine';
@@ -59,7 +55,13 @@ import { STORAGE_ERROR_EVENT, STORAGE_KEYS, usePersistentState } from './lib/sto
 import { applyServiceWorkerUpdate, watchServiceWorkerUpdate } from './lib/swUpdate';
 import { formatClock, isNightTime } from './lib/time';
 import { SANS, SHORTCUT_HINT } from './lib/ui';
-import type { FocusLogEntry, Phase, PomodoroSettings, Scene, ToastState } from './types';
+import type {
+  FocusLogEntry,
+  Phase,
+  PomodoroSettings,
+  Scene,
+  ToastState,
+} from './types';
 
 /** 浮层图已镜像到本地：原图 1.9MB PNG → 195KB WebP，且不再依赖 Figma 临时域名 */
 const OVERLAY_IMAGE = '/overlay.webp';
