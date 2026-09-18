@@ -5,8 +5,8 @@ import type { Scene } from '../types';
 interface Props {
   scenes: Scene[];
   activeIndex: number;
-  /** 音频是否已解锁（未解锁时不给声音暗示） */
-  audioReady: boolean;
+  /** 环境音当前是否真的在发声（待机 / 暂停时为 false） */
+  audible: boolean;
   muted: boolean;
   onSelect: (index: number) => void;
 }
@@ -14,12 +14,14 @@ interface Props {
 function SceneSwitcherComponent({
   scenes,
   activeIndex,
-  audioReady,
+  audible,
   muted,
   onSelect,
 }: Props) {
   const [hovered, setHovered] = useState<number | null>(null);
-  const soundOff = muted || !audioReady;
+  const soundOff = muted || !audible;
+  // 图标要能解释"为什么没声音"：静音是用户设置，待机是还没开始
+  const soundHint = muted ? '已静音' : audible ? '音景播放中' : '开始专注后播放音景';
 
   return (
     <div className="flex justify-center">
@@ -36,6 +38,7 @@ function SceneSwitcherComponent({
               onMouseEnter={() => setHovered(index)}
               onMouseLeave={() => setHovered(null)}
               aria-pressed={isActive}
+              title={soundHint}
               className="flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b pb-1 text-xs tracking-wide sm:text-sm"
               style={{
                 fontFamily: 'system-ui, sans-serif',

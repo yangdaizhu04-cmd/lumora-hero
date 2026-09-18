@@ -272,6 +272,15 @@ export default function App() {
     }, [startTimer]),
   );
 
+  /**
+   * 环境音唯一的发声条件：计时真正进行中。
+   * 准备倒计时也算"已经按下开始"，此时淡入正好陪用户进入状态；
+   * 待机、暂停一律静音 —— 不会再出现"点一下场景切换器就出声"。
+   */
+  const shouldPlayAmbience = phaseStatus === 'running' || ritual.isActive;
+  const playStateRef = useRef(shouldPlayAmbience);
+  playStateRef.current = shouldPlayAmbience;
+
   // ---------- 交互 ----------
   const unlockedRef = useRef(false);
   const unlockAudio = useCallback(() => {
@@ -286,10 +295,11 @@ export default function App() {
     });
   }, [audio]);
 
-  /** 任何主动操作都视为"我还醒着"：取消睡眠定时并恢复播放 */
+  /** 任何主动操作都视为"我还醒着"：取消睡眠定时，并把发声状态交还给计时器 */
   const wake = useCallback(() => {
     audio.cancelSleep();
     setSleepUntil(null);
+    audio.setPlaying(playStateRef.current);
   }, [audio]);
 
   const handleToggle = useCallback(() => {
@@ -327,13 +337,16 @@ export default function App() {
     settings.ritualEnabled,
   ]);
 
+  /**
+   * 切场景只换画面与音层配置，不启动声音 ——
+   * 待机时浏览场景应该是"安静的预览"，想听就按开始。
+   */
   const handleSelectScene = useCallback(
     (index: number) => {
-      unlockAudio();
       wake();
       setSceneIndex(index);
     },
-    [unlockAudio, wake, setSceneIndex],
+    [wake, setSceneIndex],
   );
 
   const handleSelectPhase = useCallback(
@@ -397,6 +410,8 @@ export default function App() {
   const handleStartSleep = useCallback(
     (minutes: number) => {
       unlockAudio();
+      // 睡眠定时是"明确想听环境音"的操作，所以它自己也要求发声
+      audio.setPlaying(true);
       audio.startSleepFade(minutes * 60);
       setSleepUntil(Date.now() + minutes * 60 * 1000);
       setSettingsOpen(false);
@@ -458,6 +473,10 @@ export default function App() {
   useEffect(() => {
     audio.setRegistry(SCENES.flatMap((item) => item.layers));
   }, [audio]);
+
+  useEffect(() => {
+    audio.setPlaying(shouldPlayAmbience);
+  }, [audio, shouldPlayAmbience]);
 
   useEffect(() => {
     audio.setScene(scene.layers);
@@ -817,7 +836,7 @@ export default function App() {
           <SceneSwitcher
             scenes={SCENES}
             activeIndex={activeIndex}
-            audioReady={audioUnlocked}
+            audible={shouldPlayAmbience && audioUnlocked}
             muted={settings.muted}
             onSelect={handleSelectScene}
           />

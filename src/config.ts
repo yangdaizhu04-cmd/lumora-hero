@@ -20,8 +20,10 @@ export const AUDIO = {
   sceneFadeSec: 1.2,
   /** 音量/静音的整体淡入淡出 */
   volumeFadeSec: 0.2,
-  /** 解锁时的一次性淡入 */
-  unlockFadeSec: 0.4,
+  /** 计时开始时环境音的淡入时长（稍慢，让进入状态更柔和） */
+  playFadeInSec: 1.6,
+  /** 暂停 / 待机时环境音的淡出时长（略快，给操作一个即时回应） */
+  playFadeOutSec: 0.8,
   /** 专注结束 / 休息结束的 duck 持续时长 */
   chimeFocusDuckMs: 3200,
   chimeBreakDuckMs: 2200,

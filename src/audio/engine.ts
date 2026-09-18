@@ -24,7 +24,7 @@ interface NetworkInformation {
 /**
  * 环境音引擎。
  *
- * 链路：HTMLAudioElement(loop) → layerGain → stereoPanner → master → destination
+ * 链路：HTMLAudioElement(loop) → layerGain → stereoPanner → master → sleepGain → destination
  *                                        ↑
  *                              合成 pad ──┘（自适应音景）
  *
@@ -32,11 +32,15 @@ interface NetworkInformation {
  * 1. **预热**：解锁时把全部场景的音层都建好（音量 0、暂停），切场景只改增益，切换是瞬时的；
  *    省流模式或 2G 网络下只预热当前场景。
  * 2. **不是直接改 gain.value 而是线性斜坡**：所有音量变化都走 ramp，避免爆音。
- * 3. **duck / 睡眠定时作用在 master 上**：不干扰各层自己的目标音量。
+ * 3. **睡眠淡出用独立的 sleepGain 节点**：它和"音量/静音/duck"是两套互不相干的比例。
+ *    早先两者共用 master.gain，任一方 cancelScheduledValues 都会把另一方的斜坡打断
+ *    （表现为"开了睡眠定时反而完全没声音"，详见 开发踩坑点.md）。
  */
 export class AmbienceEngine {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
+  /** 睡眠定时的独立音量比例（1 → 0），与主音量自动化互不干扰 */
+  private sleepGain: GainNode | null = null;
   private pad: SynthPad | null = null;
 
   private layers = new Map<string, Layer>();
@@ -53,6 +57,15 @@ export class AmbienceEngine {
 
   private sleeping = false;
   private sleepTimer: number | null = null;
+  /** 睡眠淡出的起点与总时长：取消时用它按时间推算"此刻的比例"，避免读 .value 的歧义 */
+  private sleepStartedAt = 0;
+  private sleepSeconds = 0;
+
+  /**
+   * 是否应该发声。由计时状态驱动（见 App 里的同步 effect）：
+   * 待机、暂停时为 false —— 此时音层悄悄淡出并暂停，不再占用解码与电量。
+   */
+  private playing = false;
 
   private spatialEnabled = false;
   private spatialLfo: OscillatorNode | null = null;
@@ -76,9 +89,19 @@ export class AmbienceEngine {
     return this.sleeping;
   }
 
+  get isPlaying(): boolean {
+    return this.playing;
+  }
+
   // ---------- 生命周期 ----------
 
-  /** 必须在用户手势（click/keydown）中调用，否则浏览器会挂起 AudioContext */
+  /**
+   * 必须在用户手势（click/keydown）中调用，否则浏览器会挂起 AudioContext。
+   *
+   * 注意这里**只做准备、不出声**：创建上下文、建好音层、把场景配好，
+   * 主音量保持 0。真正发声由 setPlaying(true) 决定 ——
+   * 早先版本在 unlock 里直接淡入音量，导致"点一下场景切换器就会出声"。
+   */
   async unlock(): Promise<void> {
     if (this.disposed) return;
 
@@ -92,7 +115,10 @@ export class AmbienceEngine {
       this.ctx = new Ctor();
       this.master = this.ctx.createGain();
       this.master.gain.value = 0;
-      this.master.connect(this.ctx.destination);
+
+      this.sleepGain = this.ctx.createGain();
+      this.master.connect(this.sleepGain);
+      this.sleepGain.connect(this.ctx.destination);
 
       this.pad = new SynthPad(this.ctx, this.master);
       this.pad.setRoot(this.padRootHz);
@@ -110,8 +136,8 @@ export class AmbienceEngine {
     this.applySceneLayers(AUDIO.sceneFadeSec);
     this.applySpatial();
     this.pad?.setRoot(this.padRootHz);
-    this.pad?.setLevel(this.padLevel, 3);
-    this.applyMasterGain(AUDIO.unlockFadeSec);
+    this.pad?.setLevel(this.shouldSilence ? 0 : this.padLevel, 3);
+    this.applyMasterGain(AUDIO.playFadeInSec);
   }
 
   dispose(): void {
@@ -124,6 +150,7 @@ export class AmbienceEngine {
     this.ctx?.close().catch(() => undefined);
     this.ctx = null;
     this.master = null;
+    this.sleepGain = null;
     this.disposed = true;
   }
 
@@ -177,7 +204,7 @@ export class AmbienceEngine {
   /** 合成 pad 的目标音量与基频 */
   setPadLevel(level: number, fadeSec = 4): void {
     this.padLevel = clamp(level, 0, 1);
-    if (this.sleeping) return;
+    if (this.shouldSilence) return;
     this.pad?.setLevel(this.padLevel, fadeSec);
   }
 
@@ -207,6 +234,25 @@ export class AmbienceEngine {
     this.applySpatial();
   }
 
+  /**
+   * 环境音跟随计时状态发声：开始（含准备倒计时）后淡入，暂停 / 待机淡出。
+   *
+   * 引擎本身在用户手势里就解锁完毕了，所以暂停只是把音量淡到 0 并暂停媒体元素，
+   * 音层、已加载的音频都留在内存里，再次开始是瞬时的、不需要重新下载。
+   */
+  setPlaying(playing: boolean): void {
+    if (playing === this.playing) return;
+    this.playing = playing;
+
+    // 还没解锁：先把状态记下，unlock 时会按它决定要不要发声
+    if (!this.ctx) return;
+
+    const fade = playing ? AUDIO.playFadeInSec : AUDIO.playFadeOutSec;
+    this.applyLayerGains(fade);
+    this.applyMasterGain(fade);
+    this.pad?.setLevel(playing ? this.padLevel : 0, fade);
+  }
+
   /** 临时压低环境音，用于提示音/阶段播报 */
   duck(holdMs: number = AUDIO.chimeBreakDuckMs): void {
     this.ducked = true;
@@ -222,16 +268,19 @@ export class AmbienceEngine {
 
   // ---------- 睡眠定时 ----------
 
-  /** 在 seconds 秒内把整体音量淡到静音并停止播放 */
+  /** 在 seconds 秒内把整体音量淡到静音并停止播放（走独立的 sleepGain，不碰主音量） */
   startSleepFade(seconds: number): void {
-    if (!this.ctx || !this.master) return;
+    if (!this.ctx || !this.sleepGain) return;
     this.clearSleepTimer();
 
     const now = this.ctx.currentTime;
-    const gain = this.master.gain;
+    const gain = this.sleepGain.gain;
     gain.cancelScheduledValues(now);
-    gain.setValueAtTime(gain.value, now);
+    gain.setValueAtTime(1, now);
     gain.linearRampToValueAtTime(0.0001, now + seconds);
+
+    this.sleepStartedAt = now;
+    this.sleepSeconds = seconds;
 
     this.sleepTimer = window.setTimeout(() => {
       this.sleepTimer = null;
@@ -244,8 +293,23 @@ export class AmbienceEngine {
   /** 任何用户操作都应取消睡眠定时并恢复正常播放 */
   cancelSleep(): void {
     const wasSleeping = this.sleeping;
+    const wasFading = this.sleepTimer !== null;
     this.clearSleepTimer();
     this.sleeping = false;
+
+    if (this.ctx && this.sleepGain) {
+      const now = this.ctx.currentTime;
+      const gain = this.sleepGain.gain;
+      // 淡出进行中：按时间推算当前比例（不能依赖斜坡中的 .value 读值）；
+      // 已经淡完或本来就没开：.value 是可靠的
+      const current = wasFading
+        ? clamp(1 - (now - this.sleepStartedAt) / this.sleepSeconds, 0.0001, 1)
+        : gain.value;
+      gain.cancelScheduledValues(now);
+      gain.setValueAtTime(current, now);
+      gain.linearRampToValueAtTime(1, now + AUDIO.sceneFadeSec);
+    }
+
     if (wasSleeping) {
       this.applySceneLayers(AUDIO.sceneFadeSec);
       this.pad?.setLevel(this.padLevel, 3);
@@ -267,6 +331,11 @@ export class AmbienceEngine {
   }
 
   // ---------- 内部实现 ----------
+
+  /** 需要静音的全部原因：睡眠定时已生效，或计时并未进行 */
+  private get shouldSilence(): boolean {
+    return this.sleeping || !this.playing;
+  }
 
   private clearSleepTimer(): void {
     if (this.sleepTimer !== null) {
@@ -360,10 +429,12 @@ export class AmbienceEngine {
     if (!this.ctx) return;
 
     this.layers.forEach((layer) => {
-      const target = this.sleeping ? 0 : layer.level * layer.adaptive;
+      const target = this.shouldSilence ? 0 : layer.level * layer.adaptive;
 
       this.rampGain(layer.gain.gain, target, fadeSec);
 
+      // 睡眠过程中由 startSleepFade 统一收尾（它自己有更长的淡出时间），这里不插手。
+      // 注意不能因为"静音"就 return —— 待机/暂停时正是要靠下面的分支把元素真正 pause 掉。
       if (this.sleeping) return;
 
       if (target > 0.001) {
@@ -441,7 +512,7 @@ export class AmbienceEngine {
 
   private applyMasterGain(fadeSec: number): void {
     if (!this.ctx || !this.master) return;
-    const target = this.sleeping
+    const target = this.shouldSilence
       ? 0
       : this.muted
         ? 0

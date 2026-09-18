@@ -5,8 +5,10 @@ import { playChime, playDayMotif, playTick, type ChimeKind } from '../audio/chim
 import type { AudioLayerConfig } from '../types';
 
 export interface AudioApi {
-  /** 在用户手势中调用，解锁音频 */
+  /** 在用户手势中调用，解锁音频引擎（只准备，不出声） */
   unlock: () => Promise<void>;
+  /** 环境音是否发声，由计时状态驱动：待机 / 暂停时静音，运行时淡入 */
+  setPlaying: (playing: boolean) => void;
   /** 注册全部场景的音层，解锁后预热（切换场景不再有加载延迟） */
   setRegistry: (configs: AudioLayerConfig[]) => void;
   setScene: (layers: AudioLayerConfig[]) => void;
@@ -52,6 +54,7 @@ export function useAudioEngine(): AudioApi {
   return useMemo<AudioApi>(
     () => ({
       unlock: () => engine.unlock(),
+      setPlaying: (playing) => engine.setPlaying(playing),
       setRegistry: (configs) => engine.setRegistry(configs),
       setScene: (layers) => engine.setScene(layers),
       setVolume: (volume) => engine.setVolume(volume),
