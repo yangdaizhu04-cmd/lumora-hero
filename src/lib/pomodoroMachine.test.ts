@@ -284,3 +284,44 @@ describe('RESET / SELECT / SETTINGS_CHANGED', () => {
     expect(changed).toBe(state);
   });
 });
+
+describe('EXTEND（再来 5 分钟）', () => {
+  it('运行中延长：剩余与总时长同步加长，结束时间顺延', () => {
+    const state = running(10 * MIN);
+    const { state: next } = apply(state, { type: 'EXTEND', minutes: 5 });
+
+    expect(next.remainingMs).toBe(15 * MIN);
+    // totalMs 同步加长，进度环的比例才不会跳变
+    expect(next.totalMs).toBe(state.totalMs + 5 * MIN);
+    expect(next.endAt).toBe(state.endAt! + 5 * MIN);
+  });
+
+  it('暂停中延长：endAt 保持 null', () => {
+    const paused = apply(running(10 * MIN), { type: 'PAUSE', at: T0 }).state;
+    const { state } = apply(paused, { type: 'EXTEND', minutes: 5 });
+
+    expect(state.status).toBe('paused');
+    expect(state.remainingMs).toBe(15 * MIN);
+    expect(state.endAt).toBeNull();
+  });
+
+  it('空闲时不生效（应该去改时长设置）', () => {
+    const idle = initialState(S);
+    expect(apply(idle, { type: 'EXTEND', minutes: 5 }).state).toBe(idle);
+  });
+
+  it('0 分钟与负数都是空操作', () => {
+    const state = running(10 * MIN);
+    expect(apply(state, { type: 'EXTEND', minutes: 0 }).state).toBe(state);
+    expect(apply(state, { type: 'EXTEND', minutes: -5 }).state).toBe(state);
+  });
+
+  it('不改变阶段与完成计数，也不触发完成回调', () => {
+    const state = running(10 * MIN);
+    const result = apply(state, { type: 'EXTEND', minutes: 5 });
+
+    expect(result.completed).toBeNull();
+    expect(result.state.phase).toBe('focus');
+    expect(result.state.completedFocus).toBe(state.completedFocus);
+  });
+});
