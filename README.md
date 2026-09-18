@@ -7,18 +7,24 @@
 
 > 本项目由营销落地页（Lumora Hero）改造而来。
 
+[![CI](https://github.com/yangdaizhu04-cmd/lumora-hero/actions/workflows/ci.yml/badge.svg)](https://github.com/yangdaizhu04-cmd/lumora-hero/actions/workflows/ci.yml)
+
 ---
 
 ## 快速开始
 
+> 需要 **Node ≥ 22.19**：`jsdom@30`（`^22.22.2 || ^24.15.0`）与 `undici@8`（`>=22.19.0`）的下限。
+> 本地开发与 CI 都跑在 **Node 24** 上，两边版本请保持一致（原因见 `开发踩坑点.md` 记录 24）。
+
 ```bash
 npm install
-npm run dev      # 开发服务器 http://localhost:5173
-npm run build    # 类型检查 + 生产构建
-npm run preview  # 预览构建产物（Service Worker 只在这里生效）
-npm test         # 单元测试（119 个）
-npm run lint     # ESLint
-npm run format   # Prettier 格式化
+npm run dev           # 开发服务器 http://localhost:5173
+npm run build         # 类型检查 + 生产构建
+npm run preview       # 预览构建产物（Service Worker 只在这里生效）
+npm test              # 单元测试（13 个文件 / 119 个用例）
+npm run lint          # ESLint
+npm run format        # Prettier 格式化
+npm run format:check  # 只校验不写入（CI 用这条）
 ```
 
 Windows 用户也可直接双击 `start-lumora.bat`。
@@ -92,7 +98,8 @@ Windows 用户也可直接双击 `start-lumora.bat`。
 - **音景配方分享**：把当前氛围编码成链接（`#p=…`），对方打开即还原
 - **PWA**：可安装到桌面（含 iOS PNG 图标与桌面快捷方式），**实测离线可打开**
   （应用外壳与音频走缓存，视频交给浏览器缓存）；**新版本会提示「点一下刷新」**，不再静默停留在旧代码
-- 119 个单元测试（纯函数 + hooks）+ ESLint + Prettier + GitHub Actions CI
+- 13 个文件 / 119 个单元测试（纯函数跑 `node`，hooks 与备份用 `// @vitest-environment jsdom`）
+  + ESLint + Prettier + GitHub Actions CI
 
 ---
 
@@ -131,8 +138,10 @@ Windows 用户也可直接双击 `start-lumora.bat`。
 - Tailwind CSS 4（`@tailwindcss/vite`）+ lucide-react
 - 原生 Web Audio API：多层环境音、交叉淡化、duck、空间化与合成钟声
 - PWA：手写 Service Worker（无插件），缓存策略见 `public/sw.js`；更新需用户确认（`src/lib/swUpdate.ts`）
-- 测试：Vitest（纯函数 + hooks 走 jsdom）+ 真实浏览器端到端验证
-- **生产依赖零新增**（React 之外只有 lucide-react；jsdom / Testing Library 只在 devDependencies）
+- 测试：Vitest 3（13 文件 / 119 用例；默认 `node` 环境，需要 DOM 的用例在**文件首行**声明
+  `// @vitest-environment jsdom`）+ 真实浏览器端到端验证
+- CI：GitHub Actions（`npm ci` → lint → format:check → test → build，Node 24 + actions v5）
+- **生产依赖零新增**（React 之外只有 lucide-react；jsdom / @testing-library/react 只在 devDependencies）
 
 ---
 
@@ -155,6 +164,7 @@ src/
     useMediaSession.ts       # 耳机按键 / 锁屏
     useRitual.ts             # 开始前准备倒计时
     useClockTick.ts          # 分钟级时钟（夜间模式 / 睡眠倒计时 / 统计刷新）
+    usePersistentState.ts    # localStorage 绑定（去抖写盘 + 多标签同步 + 写入失败事件）
     useKeyboardShortcuts.ts  # 全局快捷键（处理函数走 ref，监听器只挂一次）
     useFocusMode.ts          # 专注模式 + 浏览器全屏同步
     useAutoScene.ts          # 阶段 → 场景自动编排
@@ -221,7 +231,7 @@ public/
 | 文件 | 用途 |
 |---|---|
 | `README.md` | 项目说明、运行方式、功能与结构 |
-| `开发踩坑点.md` | 17 条真实踩坑记录 + 13 条风险规避清单 |
+| `开发踩坑点.md` | 25 条真实踩坑记录 + 27 条风险规避清单 |
 | `开发者交接文档.md` | 交接内容、设计决策、调试后门、剩余工作、验证清单 |
 
 ---
@@ -242,5 +252,7 @@ public/
 - [x] **性能与流量**（视频按需挂载、音频空闲预热、CDN 预连接、写盘去抖）
 - [x] **工程化**（导入逐字段校验、错误边界、多标签同步、SW 更新提示、
       hooks 测试 119 个、GitHub Actions CI）
+- [x] **开源协作**（GitHub 公开仓库 + Actions CI：Node 24 / actions v5，
+      13 文件 119 用例全绿；本机 `github.com` 被阻断时走 SSH-over-443 推送）
 - [ ] 可选：多端同步（WebDAV）、白噪音混音器 UI、任务编辑与排序
 - [ ] 实验分支：本地 LLM 总结回顾（`WebLLM`，需下载 1–2GB 模型，**不建议进主线**，理由见交接文档）
