@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildReview, formatDayLabel, sumReview } from './review';
-import type {
-  ArchivedTask,
-  DayArchive,
-  FocusLogEntry,
-  Task,
-} from '../types';
+import type { ArchivedTask, DayArchive, FocusLogEntry, Task } from '../types';
 
 const NOW = new Date(2026, 8, 18, 12, 0, 0); // 2026-09-18 周五
 
@@ -16,7 +11,13 @@ function archived(
   completed = 0,
   estimated = 1,
 ): ArchivedTask {
-  return { id, title, status, completedPomodoros: completed, estimatedPomodoros: estimated };
+  return {
+    id,
+    title,
+    status,
+    completedPomodoros: completed,
+    estimatedPomodoros: estimated,
+  };
 }
 
 function day(date: string, tasks: ArchivedTask[]): DayArchive {
@@ -84,17 +85,18 @@ describe('buildReview', () => {
 
     expect(review).toHaveLength(1);
     expect(review[0].isToday).toBe(true);
-    expect(review[0].tasks.map((task) => task.status)).toEqual([
-      'done',
-      'unfinished',
-    ]);
+    expect(review[0].tasks.map((task) => task.status)).toEqual(['done', 'unfinished']);
     expect(review[0].doneCount).toBe(1);
   });
 
   it('只有专注记录、没有任务的天也会保留', () => {
     const review = buildReview([], [logEntry('2026-09-10', 50)], [], NOW);
     expect(review).toHaveLength(1);
-    expect(review[0]).toMatchObject({ date: '2026-09-10', focusCount: 1, focusMinutes: 50 });
+    expect(review[0]).toMatchObject({
+      date: '2026-09-10',
+      focusCount: 1,
+      focusMinutes: 50,
+    });
   });
 
   it('既没有任务也没有专注的天被过滤掉', () => {

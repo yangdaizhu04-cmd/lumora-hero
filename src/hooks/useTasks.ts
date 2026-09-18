@@ -3,12 +3,7 @@ import { LIMITS } from '../config';
 import { createId } from '../lib/id';
 import { dayKey } from '../lib/stats';
 import { STORAGE_KEYS, usePersistentState } from '../lib/storage';
-import type {
-  ArchivedTask,
-  ArchivedTaskStatus,
-  DayArchive,
-  Task,
-} from '../types';
+import type { ArchivedTask, ArchivedTaskStatus, DayArchive, Task } from '../types';
 
 export interface RolloverInfo {
   /** 刚刚结束的那一天 */

@@ -158,10 +158,7 @@ function SettingsDrawerComponent({
                 label="阶段结束提示音"
               />
             </Row>
-            <Row
-              label="自适应音景"
-              hint="随专注进度缓慢铺入一层低频长音，越投入越沉"
-            >
+            <Row label="自适应音景" hint="随专注进度缓慢铺入一层低频长音，越投入越沉">
               <Toggle
                 checked={settings.adaptiveSound}
                 onChange={(checked) => onChange({ adaptiveSound: checked })}
@@ -223,10 +220,7 @@ function SettingsDrawerComponent({
             )}
             <Row
               label="省电模式"
-              hint={
-                deviceHint ??
-                '用静态渐变代替背景视频，显著降低耗电与流量'
-              }
+              hint={deviceHint ?? '用静态渐变代替背景视频，显著降低耗电与流量'}
             >
               <Toggle
                 checked={settings.lowPowerMode}
@@ -338,9 +332,7 @@ export const SettingsDrawer = memo(SettingsDrawerComponent);
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="mt-5 first:mt-0">
-      <h3 className="text-[11px] uppercase tracking-[0.22em] text-white/35">
-        {title}
-      </h3>
+      <h3 className="text-[11px] uppercase tracking-[0.22em] text-white/35">{title}</h3>
       <div className="mt-2 border-t border-white/10">{children}</div>
     </section>
   );
@@ -360,9 +352,7 @@ function Row({
       <div className="min-w-0">
         <div className="text-sm">{label}</div>
         {hint && (
-          <div className="mt-0.5 text-[11px] leading-snug text-white/40">
-            {hint}
-          </div>
+          <div className="mt-0.5 text-[11px] leading-snug text-white/40">{hint}</div>
         )}
       </div>
       {children}

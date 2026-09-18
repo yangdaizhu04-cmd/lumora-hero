@@ -29,9 +29,7 @@ function StatsBarComponent({ stats }: Props) {
         {formatMinutes(stats.todayMinutes)}
       </span>
       <span className="opacity-30">|</span>
-      <span className="whitespace-nowrap tabular-nums">
-        连续 {stats.streak} 天
-      </span>
+      <span className="whitespace-nowrap tabular-nums">连续 {stats.streak} 天</span>
 
       <div className="hidden items-end gap-[3px] pl-1 sm:flex" aria-hidden="true">
         {stats.last7.map((day) => (

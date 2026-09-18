@@ -114,10 +114,14 @@ export function rehydrateSession(
 
     const live: PomodoroState = { ...base, status: 'running', remainingMs: 0 };
     // 关键：强制关闭 autoStartNext，否则"回来后"会白送一段已经流逝的时间
-    const result = transition(live, { type: 'TICK', at: now }, {
-      ...settings,
-      autoStartNext: false,
-    });
+    const result = transition(
+      live,
+      { type: 'TICK', at: now },
+      {
+        ...settings,
+        autoStartNext: false,
+      },
+    );
 
     const credited = result.completed?.finished === 'focus';
 

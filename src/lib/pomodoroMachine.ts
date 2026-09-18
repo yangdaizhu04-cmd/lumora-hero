@@ -135,7 +135,12 @@ export function transition(
       const base =
         state.remainingMs > 0 ? state.remainingMs : durationMs(state.phase, settings);
       return {
-        state: { ...state, status: 'running', remainingMs: base, endAt: event.at + base },
+        state: {
+          ...state,
+          status: 'running',
+          remainingMs: base,
+          endAt: event.at + base,
+        },
         completed: null,
       };
     }
@@ -158,7 +163,13 @@ export function transition(
     case 'RESET': {
       const total = durationMs(state.phase, settings);
       return {
-        state: { ...state, status: 'idle', remainingMs: total, totalMs: total, endAt: null },
+        state: {
+          ...state,
+          status: 'idle',
+          remainingMs: total,
+          totalMs: total,
+          endAt: null,
+        },
         completed: null,
       };
     }

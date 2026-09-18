@@ -233,15 +233,12 @@ export class AmbienceEngine {
     gain.setValueAtTime(gain.value, now);
     gain.linearRampToValueAtTime(0.0001, now + seconds);
 
-    this.sleepTimer = window.setTimeout(
-      () => {
-        this.sleepTimer = null;
-        this.sleeping = true;
-        this.layers.forEach((layer) => layer.audio.pause());
-        this.pad?.setLevel(0, 1);
-      },
-      seconds * 1000,
-    );
+    this.sleepTimer = window.setTimeout(() => {
+      this.sleepTimer = null;
+      this.sleeping = true;
+      this.layers.forEach((layer) => layer.audio.pause());
+      this.pad?.setLevel(0, 1);
+    }, seconds * 1000);
   }
 
   /** 任何用户操作都应取消睡眠定时并恢复正常播放 */
@@ -280,9 +277,8 @@ export class AmbienceEngine {
 
   /** 是否值得把所有场景的音频都下下来（省流/2G 时只预热当前场景） */
   private shouldPreloadAll(): boolean {
-    const connection = (
-      navigator as unknown as { connection?: NetworkInformation }
-    ).connection;
+    const connection = (navigator as unknown as { connection?: NetworkInformation })
+      .connection;
     if (!connection) return true;
     if (connection.saveData) return false;
     return connection.effectiveType !== '2g' && connection.effectiveType !== 'slow-2g';

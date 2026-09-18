@@ -21,7 +21,10 @@ const apply = (
 ) => transition(state, event, settings);
 
 /** 造一个"正在运行、还剩 remainingMs"的状态 */
-function running(remainingMs: number, from: PomodoroState = initialState(S)): PomodoroState {
+function running(
+  remainingMs: number,
+  from: PomodoroState = initialState(S),
+): PomodoroState {
   return apply({ ...from, remainingMs }, { type: 'START', at: T0 }).state;
 }
 
@@ -57,7 +60,9 @@ describe('START / PAUSE', () => {
 
   it('重复 START 不改变状态引用', () => {
     const runningState = running(10 * MIN);
-    expect(apply(runningState, { type: 'START', at: T0 + 1000 }).state).toBe(runningState);
+    expect(apply(runningState, { type: 'START', at: T0 + 1000 }).state).toBe(
+      runningState,
+    );
   });
 
   it('暂停时按时间戳结算剩余时间', () => {
@@ -107,7 +112,11 @@ describe('TICK', () => {
   it('时间到完成阶段：计入一次番茄并进入短休', () => {
     const state = running(1000);
     const { state: next, completed } = apply(state, { type: 'TICK', at: T0 + 1000 });
-    expect(completed).toEqual({ finished: 'focus', next: 'shortBreak', credited: true });
+    expect(completed).toEqual({
+      finished: 'focus',
+      next: 'shortBreak',
+      credited: true,
+    });
     expect(next).toMatchObject({
       phase: 'shortBreak',
       status: 'idle',
@@ -129,12 +138,12 @@ describe('TICK', () => {
 
   it('自动开始开启时，下一阶段直接进入运行', () => {
     const settings = { ...S, autoStartNext: true };
-    const state = apply(initialState(settings), { type: 'START', at: T0 }, settings).state;
-    const { state: next } = apply(
-      state,
-      { type: 'TICK', at: state.endAt! },
+    const state = apply(
+      initialState(settings),
+      { type: 'START', at: T0 },
       settings,
-    );
+    ).state;
+    const { state: next } = apply(state, { type: 'TICK', at: state.endAt! }, settings);
     expect(next.status).toBe('running');
     expect(next.endAt).toBe(state.endAt! + 5 * MIN);
   });
@@ -178,19 +187,42 @@ describe('长休循环', () => {
       totalMs: 5 * MIN,
     };
     const started = apply(breakState, { type: 'START', at: T0 }).state;
-    const { state: next, completed } = apply(started, { type: 'TICK', at: started.endAt! });
-    expect(completed).toEqual({ finished: 'shortBreak', next: 'focus', credited: true });
-    expect(next).toMatchObject({ phase: 'focus', status: 'idle', remainingMs: 25 * MIN });
+    const { state: next, completed } = apply(started, {
+      type: 'TICK',
+      at: started.endAt!,
+    });
+    expect(completed).toEqual({
+      finished: 'shortBreak',
+      next: 'focus',
+      credited: true,
+    });
+    expect(next).toMatchObject({
+      phase: 'focus',
+      status: 'idle',
+      remainingMs: 25 * MIN,
+    });
   });
 });
 
 describe('SKIP', () => {
   it('跳过专注：不计番茄、不推进长休、即使开了自动开始也不自动开始', () => {
     const settings = { ...S, autoStartNext: true };
-    const state = apply(initialState(settings), { type: 'START', at: T0 }, settings).state;
-    const { state: next, completed } = apply(state, { type: 'SKIP', at: T0 + 1000 }, settings);
+    const state = apply(
+      initialState(settings),
+      { type: 'START', at: T0 },
+      settings,
+    ).state;
+    const { state: next, completed } = apply(
+      state,
+      { type: 'SKIP', at: T0 + 1000 },
+      settings,
+    );
 
-    expect(completed).toEqual({ finished: 'focus', next: 'shortBreak', credited: false });
+    expect(completed).toEqual({
+      finished: 'focus',
+      next: 'shortBreak',
+      credited: false,
+    });
     expect(next.completedFocus).toBe(0);
     expect(next.phase).toBe('shortBreak');
     expect(next.status).toBe('idle');
@@ -201,7 +233,8 @@ describe('SKIP', () => {
     let state = initialState(S);
     for (let i = 0; i < 6; i += 1) {
       state = apply(state, { type: 'SKIP', at: T0 }).state;
-      if (state.phase === 'shortBreak') state = apply(state, { type: 'SKIP', at: T0 }).state;
+      if (state.phase === 'shortBreak')
+        state = apply(state, { type: 'SKIP', at: T0 }).state;
     }
     expect(state.completedFocus).toBe(0);
     expect(state.phase).toBe('focus');

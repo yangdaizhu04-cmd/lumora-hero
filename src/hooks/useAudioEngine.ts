@@ -46,8 +46,7 @@ export function useAudioEngine(): AudioApi {
 
   // 仅开发环境：把引擎挂到 window，便于调试与自动化验证（生产构建会被 tree-shake 掉）
   if (import.meta.env.DEV) {
-    (window as unknown as { __lumoraAudio?: AmbienceEngine }).__lumoraAudio =
-      engine;
+    (window as unknown as { __lumoraAudio?: AmbienceEngine }).__lumoraAudio = engine;
   }
 
   return useMemo<AudioApi>(

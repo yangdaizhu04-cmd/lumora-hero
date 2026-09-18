@@ -330,8 +330,7 @@ function ReviewList({
       )}
 
       <p className="px-1 text-[11px] text-white/45">
-        近 {totals.days} 天累计 {totals.count} 个番茄 ·{' '}
-        {formatMinutes(totals.minutes)}
+        近 {totals.days} 天累计 {totals.count} 个番茄 · {formatMinutes(totals.minutes)}
       </p>
 
       {review.map((day) => {

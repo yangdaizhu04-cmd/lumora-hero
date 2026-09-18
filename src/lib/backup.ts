@@ -13,8 +13,7 @@ export interface BackupFile {
 }
 
 export type ParseResult =
-  | { ok: true; entries: [string, unknown][] }
-  | { ok: false; reason: string };
+  { ok: true; entries: [string, unknown][] } | { ok: false; reason: string };
 
 const ALLOWED_KEYS = new Set<string>(Object.values(STORAGE_KEYS));
 
@@ -103,7 +102,6 @@ export function importBackup(text: string): { ok: boolean; message: string } {
   const written = applyBackup(parsed.entries);
   return {
     ok: written > 0,
-    message:
-      written > 0 ? `已导入 ${written} 项数据，刷新后生效` : '没有写入任何数据',
+    message: written > 0 ? `已导入 ${written} 项数据，刷新后生效` : '没有写入任何数据',
   };
 }

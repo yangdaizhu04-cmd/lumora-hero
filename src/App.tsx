@@ -32,11 +32,7 @@ import { useRitual } from './hooks/useRitual';
 import { useTasks, type RolloverInfo } from './hooks/useTasks';
 import { downloadBackup, importBackup } from './lib/backup';
 import { DEFAULT_SETTINGS } from './lib/defaults';
-import {
-  describeDeviceState,
-  detectLowPower,
-  detectSaveData,
-} from './lib/device';
+import { describeDeviceState, detectLowPower, detectSaveData } from './lib/device';
 import { buildInsights } from './lib/insights';
 import {
   notificationPermission,
@@ -55,12 +51,7 @@ import { buildReview } from './lib/review';
 import type { RestoredPhase } from './lib/session';
 import { STORAGE_KEYS, usePersistentState } from './lib/storage';
 import { formatClock, isNightTime } from './lib/time';
-import type {
-  FocusLogEntry,
-  Phase,
-  PomodoroSettings,
-  Scene,
-} from './types';
+import type { FocusLogEntry, Phase, PomodoroSettings, Scene } from './types';
 
 /** 浮层图已镜像到本地：原图 1.9MB PNG → 195KB WebP，且不再依赖 Figma 临时域名 */
 const OVERLAY_IMAGE = '/overlay.webp';
@@ -88,16 +79,15 @@ export default function App() {
   const [isFocusMode, setFocusMode] = useState(false);
   const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
-  const [notifyPermission, setNotifyPermission] = useState<NotifyPermission>(
-    () => notificationPermission(),
+  const [notifyPermission, setNotifyPermission] = useState<NotifyPermission>(() =>
+    notificationPermission(),
   );
   const [sleepUntil, setSleepUntil] = useState<number | null>(null);
   const [autoLowPower, setAutoLowPower] = useState(false);
 
   const audio = useAudioEngine();
 
-  const activeIndex =
-    ((sceneIndex % SCENES.length) + SCENES.length) % SCENES.length;
+  const activeIndex = ((sceneIndex % SCENES.length) + SCENES.length) % SCENES.length;
   const scene = SCENES[activeIndex];
 
   // ---------- 时间 / 设备 ----------
@@ -633,8 +623,7 @@ export default function App() {
       }
     };
     document.addEventListener('fullscreenchange', onFullscreenChange);
-    return () =>
-      document.removeEventListener('fullscreenchange', onFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
   }, []);
 
   // ---------- 键盘快捷键 ----------
@@ -814,8 +803,8 @@ export default function App() {
             }`}
             style={{ fontFamily: SANS }}
           >
-            Space 开始/暂停 · R 重置 · S 跳过 · 1–4 切换场景 · M 静音 · T
-            今日意图 · F 专注模式
+            Space 开始/暂停 · R 重置 · S 跳过 · 1–4 切换场景 · M 静音 · T 今日意图 · F
+            专注模式
           </p>
         </main>
 

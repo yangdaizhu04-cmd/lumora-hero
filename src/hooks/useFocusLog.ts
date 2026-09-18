@@ -19,10 +19,7 @@ export interface FocusLogApi {
 }
 
 export function useFocusLog(): FocusLogApi {
-  const [log, setLog] = usePersistentState<FocusLogEntry[]>(
-    STORAGE_KEYS.log,
-    [],
-  );
+  const [log, setLog] = usePersistentState<FocusLogEntry[]>(STORAGE_KEYS.log, []);
 
   const addEntry = useCallback(
     (

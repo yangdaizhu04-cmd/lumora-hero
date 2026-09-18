@@ -125,7 +125,11 @@ describe('恢复', () => {
     };
     const result = rehydrateSession(saved, T0 + 6 * MIN, S);
     expect(result.completedWhileAway).toBeNull();
-    expect(result.state).toMatchObject({ phase: 'focus', status: 'idle', completedFocus: 2 });
+    expect(result.state).toMatchObject({
+      phase: 'focus',
+      status: 'idle',
+      completedFocus: 2,
+    });
   });
 
   it('暂停中的会话原样恢复，剩余时间不变', () => {

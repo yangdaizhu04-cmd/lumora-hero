@@ -2,11 +2,7 @@ export type Phase = 'focus' | 'shortBreak' | 'longBreak';
 
 export type PhaseStatus = 'idle' | 'running' | 'paused';
 
-export type SceneId =
-  | 'golden-hour'
-  | 'still-water'
-  | 'deep-woods'
-  | 'quiet-dawn';
+export type SceneId = 'golden-hour' | 'still-water' | 'deep-woods' | 'quiet-dawn';
 
 /** 一个可播放的音景层（架构支持多层叠加） */
 export interface AudioLayerConfig {

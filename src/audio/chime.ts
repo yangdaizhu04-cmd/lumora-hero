@@ -39,24 +39,14 @@ export function playTick(ctx: AudioContext, up: boolean): void {
   bell(ctx, bus, up ? NOTE.E5 : NOTE.C5, ctx.currentTime + 0.01, 0.5, 0.12);
 }
 
-const MOTIF_NOTES = [
-  NOTE.C5,
-  NOTE.E5,
-  NOTE.G5,
-  NOTE.C6,
-  NOTE.E5 * 2,
-  NOTE.G5 * 2,
-];
+const MOTIF_NOTES = [NOTE.C5, NOTE.E5, NOTE.G5, NOTE.C6, NOTE.E5 * 2, NOTE.G5 * 2];
 
 /**
  * 声化日报：把昨天完成的番茄数变成一小段上行音阶。
  * 完成得越多，音越多、音区越高 —— 数据也可以用听的。
  */
 export function playDayMotif(ctx: AudioContext, count: number): void {
-  const notes = MOTIF_NOTES.slice(
-    0,
-    Math.max(1, Math.min(MOTIF_NOTES.length, count)),
-  );
+  const notes = MOTIF_NOTES.slice(0, Math.max(1, Math.min(MOTIF_NOTES.length, count)));
   const startAt = ctx.currentTime + 0.05;
 
   const bus = ctx.createGain();

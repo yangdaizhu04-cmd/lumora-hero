@@ -14,10 +14,7 @@ export interface Insight {
  * 数据不足时（少于 LIMITS.insightMinEntries 条）不输出任何结论 ——
  * 宁可不说，也不要基于 2 条记录给出"你上午效率最高"这种误导。
  */
-export function buildInsights(
-  log: FocusLogEntry[],
-  now = new Date(),
-): Insight[] {
+export function buildInsights(log: FocusLogEntry[], now = new Date()): Insight[] {
   if (log.length < LIMITS.insightMinEntries) return [];
 
   const insights: Insight[] = [];

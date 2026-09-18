@@ -7,12 +7,7 @@ interface Props {
   onToggleMute: () => void;
 }
 
-export function VolumeControl({
-  volume,
-  muted,
-  onVolumeChange,
-  onToggleMute,
-}: Props) {
+export function VolumeControl({ volume, muted, onVolumeChange, onToggleMute }: Props) {
   const Icon = muted || volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2;
 
   return (

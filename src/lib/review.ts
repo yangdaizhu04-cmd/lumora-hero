@@ -9,7 +9,9 @@ export function formatDayLabel(dateKey: string, now = new Date()): string {
   const [year, month, day] = dateKey.split('-').map(Number);
   const date = new Date(year, month - 1, day);
   const today = dayKey(now);
-  const yesterday = dayKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1));
+  const yesterday = dayKey(
+    new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1),
+  );
 
   if (dateKey === today) return '今天';
   if (dateKey === yesterday) return '昨天';

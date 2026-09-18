@@ -32,7 +32,9 @@ export function BreathingGuide({ active }: Props) {
 
     const tick = () => {
       const seconds = ((Date.now() - startedAt) / 1000) % CYCLE_SECONDS;
-      setStage(seconds < INHALE_END ? 'inhale' : seconds < HOLD_END ? 'hold' : 'exhale');
+      setStage(
+        seconds < INHALE_END ? 'inhale' : seconds < HOLD_END ? 'hold' : 'exhale',
+      );
     };
 
     tick();

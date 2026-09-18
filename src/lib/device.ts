@@ -9,9 +9,8 @@ interface BatteryLike {
 }
 
 export function detectSaveData(): boolean {
-  const connection = (
-    navigator as unknown as { connection?: NetworkInformation }
-  ).connection;
+  const connection = (navigator as unknown as { connection?: NetworkInformation })
+    .connection;
   if (!connection) return false;
   if (connection.saveData) return true;
   return connection.effectiveType === '2g' || connection.effectiveType === 'slow-2g';

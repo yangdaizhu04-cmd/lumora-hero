@@ -58,10 +58,7 @@ describe('computeStats', () => {
   });
 
   it('连续天数：今天还没开始时不清零', () => {
-    const stats = computeStats(
-      [entry('2026-09-17', 25), entry('2026-09-16', 25)],
-      NOW,
-    );
+    const stats = computeStats([entry('2026-09-17', 25), entry('2026-09-16', 25)], NOW);
     expect(stats.streak).toBe(2);
   });
 

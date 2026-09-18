@@ -5,11 +5,7 @@ import {
   type PomodoroEvent,
   type PomodoroState,
 } from '../lib/pomodoroMachine';
-import {
-  rehydrateSession,
-  serializeSession,
-  type RestoredPhase,
-} from '../lib/session';
+import { rehydrateSession, serializeSession, type RestoredPhase } from '../lib/session';
 import { readStorage, STORAGE_KEYS, writeStorage } from '../lib/storage';
 import type { Phase, PhaseStatus, PomodoroSettings } from '../types';
 
