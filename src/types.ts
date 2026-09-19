@@ -2,6 +2,9 @@ export type Phase = 'focus' | 'shortBreak' | 'longBreak';
 
 export type PhaseStatus = 'idle' | 'running' | 'paused';
 
+/** 计时模式：番茄钟是倒计时，Flowtime 是往上累计 */
+export type TimerMode = 'pomodoro' | 'flowtime';
+
 export type SceneId = 'golden-hour' | 'still-water' | 'deep-woods' | 'quiet-dawn';
 
 /** 一个可播放的音景层（架构支持多层叠加） */
@@ -12,6 +15,24 @@ export interface AudioLayerConfig {
   gain: number;
   /** 空间化基准位置 -1（左）..1（右），不填为居中 */
   pan?: number;
+}
+
+/** 混音器里可独立调节的音源 */
+export type MixerSourceId = 'rain' | 'waves' | 'wind' | 'stream' | 'crickets' | 'birds';
+
+export interface MixerSource {
+  id: MixerSourceId;
+  label: string;
+  /** public 目录下的音频路径 */
+  src: string;
+  /**
+   * 素材之间的微调增益。
+   * 六个文件都做过响度归一化（loudnorm I=-20 LUFS），所以默认都是 1；
+   * 留这个字段是为了"哪一层听着偏轻"时能单独补，而不必改素材。
+   */
+  gain: number;
+  /** 空间化基准位置 -1..1 */
+  pan: number;
 }
 
 export interface Scene {
@@ -39,6 +60,11 @@ export interface PomodoroSettings {
   longBreakInterval: number;
   /** 阶段结束后是否自动开始下一段 */
   autoStartNext: boolean;
+  /**
+   * Flowtime：不做倒计时，只往上累计实际专注时长，由用户决定何时结束。
+   * 适合"进入状态了就不想被打断"的场景；结束时按真实时长记一笔。
+   */
+  flowtimeMode: boolean;
   /** 0–1 */
   volume: number;
   muted: boolean;
@@ -64,6 +90,10 @@ export interface PomodoroSettings {
   spatialSound: boolean;
   /** 每周目标番茄数（0 表示不设定目标，界面上不显示） */
   weeklyGoal: number;
+  /** 自定义混音：开启后用自己搭配的音源取代场景音景 */
+  mixerEnabled: boolean;
+  /** 各音源音量 0–1（0 = 关闭）。始终存完整对象，读取时按 id 兜底 */
+  mixerLevels: Record<MixerSourceId, number>;
 }
 
 /** 今日意图（任务） */
@@ -74,6 +104,12 @@ export interface Task {
   completedPomodoros: number;
   done: boolean;
   createdAt: number;
+  /**
+   * 标签，用于按类别统计投入。
+   * 声明成可选是因为它是后加的字段 —— 老数据里没有，
+   * 这样所有读取处都会被类型系统逼着兜底，而不是拿到 undefined 才崩。
+   */
+  tags?: string[];
 }
 
 /** 一次完成的专注记录（跳过的不记） */
@@ -86,8 +122,15 @@ export interface FocusLogEntry {
   minutes: number;
   taskId: string | null;
   scene: SceneId;
-  /** 这段专注期间切走标签页的次数（分心自察） */
+  /** 这段专注期间切走标签页的次数（分心自察，被动检测） */
   interruptions?: number;
+  /**
+   * 专注中**主动打点**的打断原因 id（可重复，一次打断一个）。
+   *
+   * 与 `interruptions` 是两回事：那个是"切走标签页"的自动计数，
+   * 这个回答的是"为什么被打断"。两者都保留，因为它们的漏报/误报方向相反。
+   */
+  breakReasons?: string[];
 }
 
 export interface DayStat {
@@ -117,6 +160,8 @@ export interface ArchivedTask {
   estimatedPomodoros: number;
   completedPomodoros: number;
   status: ArchivedTaskStatus;
+  /** 同 Task.tags：可选，老归档没有这个字段 */
+  tags?: string[];
 }
 
 /** 一天的归档记录 */

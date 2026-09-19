@@ -19,6 +19,8 @@ export interface PersistedSession {
   savedAt: number;
   /** 本段已记录的"离开页面"次数（分心自察），随会话一起恢复 */
   interruptions?: number;
+  /** 本段主动打点的打断原因（id 列表），刷新后接着记 */
+  breakReasons?: string[];
 }
 
 export interface RestoredPhase {
@@ -35,6 +37,8 @@ export interface RehydrateResult {
   completedWhileAway: RestoredPhase | null;
   /** 恢复出来的分心次数，交给 UI 层作为计数起点 */
   interruptions: number;
+  /** 恢复出来的打断打点记录 */
+  breakReasons: string[];
 }
 
 const PHASES: Phase[] = ['focus', 'shortBreak', 'longBreak'];
@@ -55,6 +59,7 @@ export function serializeSession(
   state: PomodoroState,
   savedAt: number,
   interruptions = 0,
+  breakReasons: string[] = [],
 ): PersistedSession {
   return {
     phase: state.phase,
@@ -66,6 +71,7 @@ export function serializeSession(
     endAt: state.endAt,
     savedAt,
     interruptions,
+    breakReasons,
   };
 }
 
@@ -79,10 +85,15 @@ export function rehydrateSession(
       state: initialState(settings),
       completedWhileAway: null,
       interruptions: 0,
+      breakReasons: [],
     };
   }
 
   const interruptions = Math.max(0, Math.round(saved.interruptions ?? 0));
+  // 存档可能被手工改过：只留下字符串，其余丢弃
+  const breakReasons = Array.isArray(saved.breakReasons)
+    ? saved.breakReasons.filter((item): item is string => typeof item === 'string')
+    : [];
 
   const base: PomodoroState = {
     phase: saved.phase,
@@ -91,6 +102,8 @@ export function rehydrateSession(
     totalMs: saved.totalMs,
     completedFocus: saved.completedFocus,
     endAt: saved.endAt,
+    // 模式不进存档：它由设置决定，用户改了设置就该跟着变
+    mode: settings.flowtimeMode ? 'flowtime' : 'pomodoro',
   };
 
   if (saved.status === 'running' && saved.endAt !== null) {
@@ -100,6 +113,7 @@ export function rehydrateSession(
         state: { ...base, remainingMs: saved.endAt - now },
         completedWhileAway: null,
         interruptions,
+        breakReasons,
       };
     }
 
@@ -109,6 +123,7 @@ export function rehydrateSession(
         state: initialState(settings),
         completedWhileAway: null,
         interruptions: 0,
+        breakReasons: [],
       };
     }
 
@@ -131,9 +146,15 @@ export function rehydrateSession(
         ? { phase: 'focus', minutes: Math.round(saved.totalMs / 60_000) }
         : null,
       interruptions,
+      breakReasons,
     };
   }
 
   // idle / paused：原样恢复，endAt 一律清空
-  return { state: { ...base, endAt: null }, completedWhileAway: null, interruptions };
+  return {
+    state: { ...base, endAt: null },
+    completedWhileAway: null,
+    interruptions,
+    breakReasons,
+  };
 }

@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { Pause, Play, RotateCcw, SkipForward, Square } from 'lucide-react';
+import { Check, Pause, Play, RotateCcw, SkipForward, Square } from 'lucide-react';
 
 interface Props {
   isRunning: boolean;
@@ -9,6 +9,11 @@ interface Props {
   isPaused: boolean;
   /** 空闲时主按钮的说法：开始专注 / 开始休息 */
   startLabel: string;
+  /**
+   * Flowtime 模式：跳过键变成「结束专注」。
+   * 两者语义完全不同 —— 跳过是这段不算，结束是这段算数（见 pomodoroMachine 的 FINISH）。
+   */
+  finishMode?: boolean;
   /** 运行中 / 暂停中才允许延长 */
   canExtend: boolean;
   onToggle: () => void;
@@ -24,6 +29,7 @@ function ControlBarComponent({
   isPreparing,
   isPaused,
   startLabel,
+  finishMode = false,
   canExtend,
   onToggle,
   onReset,
@@ -70,16 +76,23 @@ function ControlBarComponent({
       <button
         type="button"
         onClick={onSkip}
-        aria-label="跳到下一阶段"
-        title="跳过 (S)"
+        aria-label={finishMode ? '结束专注' : '跳到下一阶段'}
+        title={finishMode ? '结束并记录这段专注' : '跳过 (S)'}
         className="liquid-glass flex h-11 w-11 items-center justify-center rounded-full transition-opacity duration-300 hover:opacity-70 sm:h-12 sm:w-12"
         style={{ fontFamily: SANS }}
       >
-        <SkipForward className="h-4 w-4" />
+        {finishMode ? (
+          <Check className="h-4 w-4" />
+        ) : (
+          <SkipForward className="h-4 w-4" />
+        )}
       </button>
 
-      {/* 延长：番茄钟最常见的诉求（"这题快做完了，再来 5 分钟"），只在计时中显示 */}
-      {canExtend && (
+      {/*
+        延长：番茄钟最常见的诉求（"这题快做完了，再来 5 分钟"）。
+        Flowtime 本来就没有终点，延长没有意义，所以那里不显示。
+      */}
+      {canExtend && !finishMode && (
         <button
           type="button"
           onClick={onExtend}

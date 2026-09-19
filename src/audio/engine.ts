@@ -60,6 +60,13 @@ export class AmbienceEngine {
   private desired: AudioLayerConfig[] = [];
   private desiredKey = '';
 
+  /**
+   * 自定义混音的音层。非 null 时它**取代**场景音景。
+   * 与 desired 分开存：切场景只改画面，混音配方不会被冲掉。
+   */
+  private mixer: AudioLayerConfig[] | null = null;
+  private mixerKey = '';
+
   private volume = 0.7;
   private muted = false;
   private ducked = false;
@@ -140,8 +147,8 @@ export class AmbienceEngine {
       }
     }
 
-    // 先保证当前场景可用（开始 / 切场景是即时的），其余场景等浏览器空闲再预热
-    this.ensureLayers(this.desired);
+    // 先保证当前音层可用（开始 / 切场景是即时的），其余等浏览器空闲再预热
+    this.ensureLayers(this.activeLayers);
     this.applySceneLayers(AUDIO.sceneFadeSec);
     this.applySpatial();
     this.applyMasterGain(AUDIO.playFadeInSec);
@@ -181,6 +188,10 @@ export class AmbienceEngine {
     this.desiredKey = key;
     layers.forEach((config) => this.registry.set(config.src, config));
 
+    // 混音器接管了发声时，切场景只换画面。
+    // 否则"自动切换场景"会在用户刚配好方子后把它冲掉。
+    if (this.mixer) return;
+
     if (!this.ctx) return;
 
     if (sameScene) {
@@ -193,6 +204,46 @@ export class AmbienceEngine {
       });
       this.applySpatialBase();
       this.applyLayerGains(0.3);
+      return;
+    }
+
+    this.applySceneLayers(fadeSec);
+  }
+
+  /**
+   * 自定义混音：传音层数组则用它们**取代**场景音景，传 null 则交还给场景。
+   *
+   * 和 setScene 共用同一条 applySceneLayers —— 两者本质都是"决定哪些层该响"。
+   * 分开维护两条链路会让"谁在抢这个 gain"变得无法推理（见开发踩坑点记录 19）。
+   */
+  setMixer(layers: AudioLayerConfig[] | null, fadeSec = AUDIO.sceneFadeSec): void {
+    const next = layers && layers.length > 0 ? layers : null;
+    const key = next
+      ? next
+          .map((layer) => layer.src)
+          .sort()
+          .join('|')
+      : '';
+    const sameMixer = key === this.mixerKey;
+
+    this.mixer = next;
+    this.mixerKey = key;
+    if (next) next.forEach((config) => this.registry.set(config.src, config));
+
+    if (!this.ctx) return;
+
+    if (sameMixer) {
+      // 只是某个音源音量变了（拖动滑块）：不要重启播放，只同步数值
+      if (next) {
+        next.forEach((config) => {
+          const layer = this.layers.get(config.src);
+          if (!layer) return;
+          layer.level = config.gain;
+          layer.pan = config.pan ?? 0;
+        });
+        this.applySpatialBase();
+        this.applyLayerGains(0.3);
+      }
       return;
     }
 
@@ -331,6 +382,11 @@ export class AmbienceEngine {
 
   // ---------- 内部实现 ----------
 
+  /** 当前真正该响的音层：混音器开着就听它的，否则听场景的 */
+  private get activeLayers(): AudioLayerConfig[] {
+    return this.mixer ?? this.desired;
+  }
+
   /** 需要静音的全部原因：睡眠定时已生效，或计时并未进行 */
   private get shouldSilence(): boolean {
     return this.sleeping || !this.playing;
@@ -376,12 +432,12 @@ export class AmbienceEngine {
       this.warmScheduled = false;
       if (this.disposed) return;
 
-      const desiredSrcs = new Set(this.desired.map((layer) => layer.src));
+      const activeSrcs = new Set(this.activeLayers.map((layer) => layer.src));
       this.registry.forEach((config) => {
         if (this.layers.has(config.src)) return;
         const layer = this.ensureLayer(config.src, config.gain, config.pan ?? 0);
-        // 预热出来的层绝不能发声：非当前场景的层基准音量一律按 0 起步
-        if (layer && !desiredSrcs.has(config.src)) layer.level = 0;
+        // 预热出来的层绝不能发声：非当前音层的基准音量一律按 0 起步
+        if (layer && !activeSrcs.has(config.src)) layer.level = 0;
       });
     };
 
@@ -450,9 +506,10 @@ export class AmbienceEngine {
   private applySceneLayers(fadeSec: number): void {
     if (!this.ctx) return;
 
-    const desiredSrcs = new Set(this.desired.map((layer) => layer.src));
+    const active = this.activeLayers;
+    const activeSrcs = new Set(active.map((layer) => layer.src));
 
-    this.desired.forEach((config) => {
+    active.forEach((config) => {
       const layer = this.ensureLayer(config.src, config.gain, config.pan ?? 0);
       if (!layer) return;
       layer.level = config.gain;
@@ -460,7 +517,7 @@ export class AmbienceEngine {
     });
 
     this.layers.forEach((layer, src) => {
-      if (desiredSrcs.has(src)) return;
+      if (activeSrcs.has(src)) return;
       layer.level = 0;
       layer.adaptive = 1;
     });

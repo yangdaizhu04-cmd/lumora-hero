@@ -14,7 +14,7 @@ import type { AudioLayerConfig, Scene } from '../types';
  * 它挂在每个场景里（而不是作为独立音源）有个好处：切换场景时它同时属于新旧两边的
  * 期望音层，引擎不会把它当作"要淡出的旧层"，垫层在场景交叉淡化中保持连续、不被切断。
  */
-const BED_LAYER: AudioLayerConfig = { src: BED.src, gain: BED.gain, pan: 0 };
+export const BED_LAYER: AudioLayerConfig = { src: BED.src, gain: BED.gain, pan: 0 };
 
 /** 深色文字场景（Deep Woods）用的白色遮罩，其余场景用压暗遮罩 */
 const DARK_OVERLAY =

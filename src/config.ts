@@ -11,6 +11,15 @@ export const TIMER = {
   tickMs: 200,
   /** 进度环补间时长，略小于 1 秒以免追不上下一帧 */
   ringTransitionMs: 950,
+  /**
+   * Flowtime 的"安全上限"。
+   *
+   * Flowtime 本意是不设终点，但计时要有端点才能继续沿用绝对时间戳机制
+   * （见 开发踩坑点.md 记录 7）。四小时足够覆盖任何真实的专注段，
+   * 顺带也防了"忘记停"——真跑满会自动结束，不会一直挂着。
+   * **写日志时用的是真实时长，不是这个值**。
+   */
+  flowtimeMaxMs: 4 * 60 * 60 * 1000,
 } as const;
 
 export const AUDIO = {
@@ -77,4 +86,10 @@ export const LIMITS = {
   reviewDays: 30,
   /** 洞察功能所需的最少记录条数 */
   insightMinEntries: 6,
+  /** 单个任务的预估番茄数上限（下限恒为 1） */
+  taskEstimate: 12,
+  /** 单个任务的标签数上限 */
+  maxTags: 5,
+  /** 单个标签的长度上限（超出直接截断，不报错） */
+  maxTagLength: 12,
 } as const;

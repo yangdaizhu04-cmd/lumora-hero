@@ -1,5 +1,6 @@
+import { TIMER } from '../config';
 import { minutesToMs } from './time';
-import type { Phase, PhaseStatus, PomodoroSettings } from '../types';
+import type { Phase, PhaseStatus, PomodoroSettings, TimerMode } from '../types';
 
 /**
  * 番茄钟状态机（纯函数）。
@@ -20,6 +21,12 @@ export interface PomodoroState {
   completedFocus: number;
   /** 运行中的结束时间戳；idle / paused 时为 null */
   endAt: number | null;
+  /**
+   * 当前计时模式。
+   * Flowtime 下 `remainingMs` 表示"离安全上限还有多久"，
+   * 界面上的正计时要用 `totalMs - remainingMs` 算，不能直接显示 remainingMs。
+   */
+  mode: TimerMode;
 }
 
 export type PomodoroEvent =
@@ -27,6 +34,8 @@ export type PomodoroEvent =
   | { type: 'PAUSE'; at: number }
   | { type: 'RESET' }
   | { type: 'SKIP'; at: number }
+  /** 主动结束当前专注并计入成绩（Flowtime 专用） */
+  | { type: 'FINISH'; at: number }
   | { type: 'SELECT'; phase: Phase }
   | { type: 'TICK'; at: number }
   | { type: 'EXTEND'; minutes: number }
@@ -37,6 +46,13 @@ export interface CompletedPhase {
   next: Phase;
   /** false 表示被跳过，不计入统计 */
   credited: boolean;
+  /**
+   * 这一段的**真实时长**。
+   *
+   * 番茄钟下等于 `totalMs`；Flowtime 下是用户实际专注的时间 ——
+   * 写日志必须用它，否则一次 40 分钟的 Flowtime 会被记成四小时的安全上限。
+   */
+  actualMs: number;
 }
 
 export interface PomodoroTransition {
@@ -46,6 +62,8 @@ export interface PomodoroTransition {
 }
 
 export function durationMs(phase: Phase, settings: PomodoroSettings): number {
+  // Flowtime 只改变专注阶段：休息仍然是固定的短休 / 长休
+  if (phase === 'focus' && settings.flowtimeMode) return TIMER.flowtimeMaxMs;
   switch (phase) {
     case 'focus':
       return minutesToMs(settings.focusMinutes);
@@ -65,6 +83,7 @@ export function initialState(settings: PomodoroSettings): PomodoroState {
     totalMs: total,
     completedFocus: 0,
     endAt: null,
+    mode: settings.flowtimeMode ? 'flowtime' : 'pomodoro',
   };
 }
 
@@ -119,9 +138,16 @@ function complete(
 
   const autoStart = settings.autoStartNext && credited;
 
+  // Flowtime 下 remainingMs 是"离安全上限还有多久"，真实时长要用总量减它；
+  // 休息阶段不受 Flowtime 影响，照常取 totalMs
+  const actualMs =
+    state.mode === 'flowtime' && finished === 'focus'
+      ? Math.max(0, state.totalMs - state.remainingMs)
+      : state.totalMs;
+
   return {
     state: enter({ ...state, completedFocus }, next, settings, autoStart ? at : null),
-    completed: { finished, next, credited },
+    completed: { finished, next, credited, actualMs },
   };
 }
 
@@ -178,12 +204,40 @@ export function transition(
     case 'SKIP':
       return complete(state, settings, false, event.at);
 
+    /**
+     * 主动结束专注，**计入成绩**。
+     *
+     * 与 SKIP 的唯一区别就是这一点：Flowtime 的时长本来就由用户说了算，
+     * 按下停止键意味着"这段时间我真的做进去了"，不该像跳过那样被丢掉。
+     * 待机状态下按没有意义，直接忽略。
+     */
+    case 'FINISH': {
+      if (state.phase !== 'focus' || state.status === 'idle') {
+        return unchanged(state);
+      }
+      /*
+       * 先用当前时刻重算一次剩余再结算。
+       * 后台标签页的 TICK 会被浏览器节流，`state.remainingMs` 可能停在几十秒前 ——
+       * 直接用它算实际时长，会把"切去别处工作了一小时"记成几分钟。
+       * （番茄钟没这个问题：那边只看 remainingMs 是否为 0，本来就要等 TICK。）
+       */
+      const live =
+        state.status === 'running' && state.endAt !== null
+          ? { ...state, remainingMs: Math.max(0, state.endAt - event.at) }
+          : state;
+      return complete(live, settings, true, event.at);
+    }
+
     case 'TICK': {
       if (state.status !== 'running' || state.endAt === null) {
         return unchanged(state);
       }
       const left = state.endAt - event.at;
-      if (left <= 0) return complete(state, settings, true, event.at);
+      // 归零后再结算：Flowtime 要按 totalMs - remainingMs 算真实时长，
+      // 带着"还剩一大截"的旧值进去会把它算成 0 分钟
+      if (left <= 0) {
+        return complete({ ...state, remainingMs: 0 }, settings, true, event.at);
+      }
       // 只有"显示的秒数"变化时才产生新状态对象：
       // 200ms 轮询 → 每秒最多一次重渲染（见 开发踩坑点.md 性能章节）
       if (Math.ceil(left / 1000) === Math.ceil(state.remainingMs / 1000)) {
@@ -222,12 +276,17 @@ export function transition(
     case 'SETTINGS_CHANGED': {
       // 运行中不打断当前阶段，只记录新设置
       if (state.status !== 'idle') return unchanged(state);
+      const mode: TimerMode = event.settings.flowtimeMode ? 'flowtime' : 'pomodoro';
       const total = durationMs(state.phase, event.settings);
-      if (total === state.totalMs && total === state.remainingMs) {
+      if (
+        total === state.totalMs &&
+        total === state.remainingMs &&
+        mode === state.mode
+      ) {
         return unchanged(state);
       }
       return {
-        state: { ...state, totalMs: total, remainingMs: total },
+        state: { ...state, totalMs: total, remainingMs: total, mode },
         completed: null,
       };
     }

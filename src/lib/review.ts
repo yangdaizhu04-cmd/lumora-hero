@@ -2,7 +2,8 @@ import { LIMITS } from '../config';
 import { dayKey } from './stats';
 import type { DayArchive, FocusLogEntry, ReviewEntry, Task } from '../types';
 
-const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
+/** 与 `Date.getDay()` 同序：0 = 周日 */
+export const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
 /** 「今天 / 昨天 / 9 月 18 日 周五」 */
 export function formatDayLabel(dateKey: string, now = new Date()): string {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActiveTaskBar } from './components/ActiveTaskBar';
 import { BreathingGuide } from './components/BreathingGuide';
+import { BreakLogger } from './components/BreakLogger';
 import { ControlBar } from './components/ControlBar';
 import { PhaseTabs } from './components/PhaseTabs';
 import { PhaseToast } from './components/PhaseToast';
@@ -20,12 +21,14 @@ import { DEFAULT_SCENE_INDEX, SCENES, sceneIndexById } from './data/scenes';
 import { useAppBadge } from './hooks/useAppBadge';
 import { useAttention } from './hooks/useAttention';
 import { useAudioEngine } from './hooks/useAudioEngine';
+import { useAudioPreview } from './hooks/useAudioPreview';
 import { useAutoScene } from './hooks/useAutoScene';
 import { useClockTick } from './hooks/useClockTick';
 import { useFocusLog } from './hooks/useFocusLog';
 import { useFocusMode } from './hooks/useFocusMode';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useMediaSession } from './hooks/useMediaSession';
+import { useMixer } from './hooks/useMixer';
 import { usePomodoro } from './hooks/usePomodoro';
 import { usePrefersReducedMotion } from './hooks/usePrefersReducedMotion';
 import { useRitual } from './hooks/useRitual';
@@ -92,8 +95,6 @@ export default function App() {
   );
   const [sleepUntil, setSleepUntil] = useState<number | null>(null);
   const [autoLowPower, setAutoLowPower] = useState(false);
-  /** 垫层试听中：临时让它发声，不开始计时也能判断强度是否合适 */
-  const [bedPreview, setBedPreview] = useState(false);
   /** 检测到 Service Worker 有新版本 */
   const [updateReady, setUpdateReady] = useState(false);
 
@@ -138,6 +139,8 @@ export default function App() {
     scene: SCENES[DEFAULT_SCENE_INDEX] as Scene,
     night: false,
     attention: 0,
+    /** 主动打点的打断原因 */
+    breaks: [] as string[],
     totalMs: 0,
     settings: DEFAULT_SETTINGS,
   });
@@ -171,7 +174,7 @@ export default function App() {
 
   // ---------- 阶段完成 ----------
   const handlePhaseComplete = useCallback(
-    (finished: Phase, _next: Phase, credited: boolean) => {
+    (finished: Phase, _next: Phase, credited: boolean, actualMs: number) => {
       const current = latest.current;
       const isFocus = finished === 'focus';
 
@@ -181,12 +184,15 @@ export default function App() {
 
       // 只有真正完成（非跳过）的专注才计入统计与任务进度
       if (isFocus && credited) {
-        const minutes = Math.round(current.totalMs / 60_000);
+        // 用真实时长而不是 totalMs：Flowtime 下 totalMs 是四小时的安全上限。
+        // 下限保住 1 分钟，否则一段几十秒的 Flowtime 会因为 minutes <= 0 被整条丢掉。
+        const minutes = Math.max(1, Math.round(actualMs / 60_000));
         log.addEntry(
           minutes,
           current.activeTaskId,
           current.scene.id,
           current.attention,
+          current.breaks,
         );
         tasks.completePomodoro();
       }
@@ -243,13 +249,21 @@ export default function App() {
     completedFocus,
     restoredAttention,
     syncInterruptions,
+    restoredBreaks,
+    syncBreaks,
     start: startTimer,
     pause: pauseTimer,
     reset: resetTimer,
     skip: skipTimer,
     select: selectPhase,
     extend: extendPhase,
+    finish: finishFocus,
+    mode: timerMode,
   } = pomodoro;
+
+  /** Flowtime：正计时，显示已用时长而不是剩余时间 */
+  const isFlowtime = timerMode === 'flowtime' && phaseState === 'focus';
+  const elapsedMs = isFlowtime ? Math.max(0, totalMs - remainingMs) : 0;
 
   /** 分心自察：只在专注真正运行时统计，刷新后从存档里的次数接着算 */
   const attention = useAttention(
@@ -268,6 +282,22 @@ export default function App() {
     probe.__lumoraAttention = attentionCount;
   }
 
+  /**
+   * 主动打点的打断记录。
+   *
+   * 和分心自察（切走标签页自动计数）不同，这个完全靠用户在被打断的那一刻自己按一下 ——
+   * 所以它必须跟着会话存档走，刷新后接着累积，否则一个 F5 就让记录白打。
+   */
+  const [breaks, setBreaks] = useState<string[]>(restoredBreaks);
+
+  useEffect(() => {
+    syncBreaks(breaks);
+  }, [syncBreaks, breaks]);
+
+  const logBreak = useCallback((reasonId: string) => {
+    setBreaks((prev) => [...prev, reasonId]);
+  }, []);
+
   // 每次渲染同步"最新值"（refs 是给回调读的，不会触发重渲染）
   latest.current = {
     log: log.log,
@@ -275,6 +305,7 @@ export default function App() {
     scene,
     night,
     attention: attentionCount,
+    breaks,
     totalMs,
     settings,
   };
@@ -310,13 +341,10 @@ export default function App() {
   } = ritual;
 
   /**
-   * 环境音唯一的发声条件：计时真正进行中。
-   * 准备倒计时也算"已经按下开始"，此时淡入正好陪用户进入状态；
-   * 待机、暂停一律静音（垫层试听是个例外，它本身就是"我要听一下"）。
+   * 发声状态的快照，供"唤醒"类操作把声音交还给计时器。
+   * 声明在前面是因为下面的 wake() 要读它；真正的值在 shouldPlayAmbience 算出后回填。
    */
-  const shouldPlayAmbience = phaseStatus === 'running' || ritualActive || bedPreview;
-  const playStateRef = useRef(shouldPlayAmbience);
-  playStateRef.current = shouldPlayAmbience;
+  const playStateRef = useRef(false);
 
   // ---------- 交互 ----------
   const unlockedRef = useRef(false);
@@ -375,33 +403,31 @@ export default function App() {
   ]);
 
   /**
-   * 垫层试听：临时让它按设定强度发声几秒。
+   * 试听窗口：垫层与自定义混音共用同一扇（同时只允许一个在响）。
    *
-   * 存在的意义是"可调" —— 垫层的合适强度因人而异、因设备而异，
-   * 而它平时只在专注时渐入，跑满一个 25 分钟番茄才能听出效果，根本没法调。
+   * 存在的意义是"可调" —— 合适的强度因人而异、因设备而异，
+   * 而它们平时只在专注时渐入，跑满一个 25 分钟番茄才能听出效果，根本没法调。
    */
-  const bedPreviewTimer = useRef<number | null>(null);
-  const handlePreviewBed = useCallback(() => {
+  const {
+    bedPreview,
+    mixerPreview,
+    start: startPreview,
+  } = useAudioPreview(UX.previewSeconds, () => {
     unlockAudio();
     wake();
-    setBedPreview(true);
-    if (bedPreviewTimer.current !== null) {
-      window.clearTimeout(bedPreviewTimer.current);
-    }
-    bedPreviewTimer.current = window.setTimeout(() => {
-      bedPreviewTimer.current = null;
-      setBedPreview(false);
-    }, UX.previewSeconds * 1000);
-  }, [unlockAudio, wake]);
+  });
 
-  useEffect(
-    () => () => {
-      if (bedPreviewTimer.current !== null) {
-        window.clearTimeout(bedPreviewTimer.current);
-      }
-    },
-    [],
-  );
+  /**
+   * 环境音唯一的发声条件：计时真正进行中。
+   * 准备倒计时也算"已经按下开始"，此时淡入正好陪用户进入状态；
+   * 待机、暂停一律静音（试听是个例外，它本身就是"我要听一下"）。
+   */
+  const shouldPlayAmbience =
+    phaseStatus === 'running' || ritualActive || bedPreview || mixerPreview;
+  playStateRef.current = shouldPlayAmbience;
+
+  const handlePreviewBed = useCallback(() => startPreview('bed'), [startPreview]);
+  const handlePreviewMixer = useCallback(() => startPreview('mixer'), [startPreview]);
 
   /**
    * 切场景只换画面与音层配置，不启动声音 ——
@@ -595,16 +621,15 @@ export default function App() {
 
   // ---------- 音频同步 ----------
   useEffect(() => {
-    audio.setRegistry(SCENES.flatMap((item) => item.layers));
-  }, [audio]);
-
-  useEffect(() => {
     audio.setPlaying(shouldPlayAmbience);
   }, [audio, shouldPlayAmbience]);
 
   useEffect(() => {
     audio.setScene(scene.layers);
   }, [audio, scene]);
+
+  // 自定义混音：开着它接管发声（含音源预热），关着交还给场景
+  useMixer(audio, settings);
 
   useEffect(() => {
     audio.setVolume(settings.volume);
@@ -659,12 +684,13 @@ export default function App() {
   // ---------- 自动场景编排 ----------
   useAutoScene(settings.autoScene, phaseState, night, setSceneIndex);
 
-  // ---------- 分心自察 ----------
+  // ---------- 分心自察 + 打断打点 ----------
   // 只在"进入一个全新的专注阶段"时清零；暂停后继续、刷新恢复都不应该丢掉计数
   const lastAttentionPhaseRef = useRef<Phase | null>(phaseState);
   useEffect(() => {
     if (phaseState === 'focus' && lastAttentionPhaseRef.current !== 'focus') {
       resetAttention();
+      setBreaks([]);
     }
     lastAttentionPhaseRef.current = phaseState;
   }, [phaseState, resetAttention]);
@@ -801,7 +827,10 @@ export default function App() {
   const statusText = ritualActive
     ? '准备中'
     : phaseStatus === 'running'
-      ? PHASE_META[phaseState].label
+      ? // Flowtime 下说"正计时"而不是"专注"，让"为什么数字在涨"一眼可解
+        isFlowtime
+        ? '正计时'
+        : PHASE_META[phaseState].label
       : phaseStatus === 'paused'
         ? '已暂停'
         : '准备开始';
@@ -874,13 +903,19 @@ export default function App() {
               breathing ? 'breathe-478' : ''
             }`}
           >
-            <TimerRing progress={progress} soft={phaseState !== 'focus'}>
+            {/* Flowtime 没有"进度"可言：不给环填色，免得看起来像刚开始就快满了 */}
+            <TimerRing
+              progress={isFlowtime ? 0 : progress}
+              soft={phaseState !== 'focus'}
+            >
               <div className="flex flex-col items-center">
                 <div
                   data-testid="timer"
                   className="text-[3.6rem] leading-none sm:text-[5rem]"
                 >
-                  <TimerDisplay text={formatClock(remainingMs)} />
+                  <TimerDisplay
+                    text={formatClock(isFlowtime ? elapsedMs : remainingMs)}
+                  />
                 </div>
                 <p
                   data-testid="phase-status"
@@ -898,13 +933,26 @@ export default function App() {
             isRunning={phaseStatus === 'running'}
             isPreparing={ritualActive}
             isPaused={phaseStatus === 'paused'}
-            startLabel={phaseState === 'focus' ? '开始专注' : '开始休息'}
+            startLabel={
+              phaseState === 'focus'
+                ? settings.flowtimeMode
+                  ? '开始正计时'
+                  : '开始专注'
+                : '开始休息'
+            }
+            finishMode={isFlowtime}
             canExtend={phaseStatus !== 'idle'}
             onToggle={handleToggle}
             onReset={resetTimer}
-            onSkip={skipTimer}
+            // Flowtime 下这个键是"结束并记录"，而不是"跳过不计"
+            onSkip={isFlowtime ? finishFocus : skipTimer}
             onExtend={handleExtend}
           />
+
+          {/* 只在专注真正跑起来时出现：待机 / 休息时不该有这个入口 */}
+          {phaseState === 'focus' && phaseStatus === 'running' && (
+            <BreakLogger count={breaks.length} onLog={logBreak} />
+          )}
 
           {tasks.activeTask && (
             <ActiveTaskBar task={tasks.activeTask} onClick={openTasks} />
@@ -962,6 +1010,8 @@ export default function App() {
         activeTaskId={tasks.activeTaskId}
         onClose={closeTasks}
         onAdd={tasks.addTask}
+        onUpdate={tasks.updateTask}
+        onMove={tasks.moveTask}
         onToggleDone={tasks.toggleDone}
         onRemove={handleRemoveTask}
         onSetActive={tasks.setActiveTask}
@@ -975,9 +1025,11 @@ export default function App() {
         deviceHint={deviceHint}
         sleepRemainingMs={sleepUntil ? Math.max(0, sleepUntil - clockTick) : 0}
         bedPreview={bedPreview}
+        mixerPreview={mixerPreview}
         logCount={log.log.length}
         onChange={handleSettingsChange}
         onPreviewBed={handlePreviewBed}
+        onPreviewMixer={handlePreviewMixer}
         onNotificationsChange={handleNotificationsChange}
         onStartSleep={handleStartSleep}
         onCancelSleep={handleCancelSleep}

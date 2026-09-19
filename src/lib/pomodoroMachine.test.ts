@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { TIMER } from '../config';
 import { DEFAULT_SETTINGS } from './defaults';
 import {
   durationMs,
@@ -116,6 +117,8 @@ describe('TICK', () => {
       finished: 'focus',
       next: 'shortBreak',
       credited: true,
+      // 番茄钟下真实时长就是 totalMs
+      actualMs: 25 * MIN,
     });
     expect(next).toMatchObject({
       phase: 'shortBreak',
@@ -195,6 +198,7 @@ describe('长休循环', () => {
       finished: 'shortBreak',
       next: 'focus',
       credited: true,
+      actualMs: 5 * MIN,
     });
     expect(next).toMatchObject({
       phase: 'focus',
@@ -222,6 +226,7 @@ describe('SKIP', () => {
       finished: 'focus',
       next: 'shortBreak',
       credited: false,
+      actualMs: 25 * MIN,
     });
     expect(next.completedFocus).toBe(0);
     expect(next.phase).toBe('shortBreak');
@@ -238,6 +243,79 @@ describe('SKIP', () => {
     }
     expect(state.completedFocus).toBe(0);
     expect(state.phase).toBe('focus');
+  });
+});
+
+describe('Flowtime', () => {
+  const S_FLOW: PomodoroSettings = { ...S, flowtimeMode: true };
+
+  it('专注阶段改用安全上限，休息阶段不受影响', () => {
+    expect(durationMs('focus', S_FLOW)).toBe(TIMER.flowtimeMaxMs);
+    expect(durationMs('shortBreak', S_FLOW)).toBe(5 * MIN);
+  });
+
+  it('FINISH 计入成绩，真实时长是实际经过的时间', () => {
+    const started = apply(
+      initialState(S_FLOW),
+      { type: 'START', at: T0 },
+      S_FLOW,
+    ).state;
+    const { state: next, completed } = apply(
+      started,
+      { type: 'FINISH', at: T0 + 40 * MIN },
+      S_FLOW,
+    );
+
+    expect(completed).toEqual({
+      finished: 'focus',
+      next: 'shortBreak',
+      credited: true,
+      actualMs: 40 * MIN,
+    });
+    expect(next.completedFocus).toBe(1);
+    expect(next.phase).toBe('shortBreak');
+  });
+
+  // 后台标签页的 TICK 会被节流，剩余时间可能停在很久以前；
+  // 结束时长必须按当前时刻重算，否则"切去别处工作了一小时"会被记成几分钟
+  it('期间没有 TICK 也能算出真实时长', () => {
+    const started = apply(
+      initialState(S_FLOW),
+      { type: 'START', at: T0 },
+      S_FLOW,
+    ).state;
+    const { completed } = apply(started, { type: 'FINISH', at: T0 + 90 * MIN }, S_FLOW);
+    expect(completed?.actualMs).toBe(90 * MIN);
+  });
+
+  it('待机状态下按 FINISH 无效', () => {
+    const idle = initialState(S_FLOW);
+    expect(apply(idle, { type: 'FINISH', at: T0 }, S_FLOW).state).toBe(idle);
+  });
+
+  it('跑满安全上限会自动结束，不会一直挂着', () => {
+    const started = apply(
+      initialState(S_FLOW),
+      { type: 'START', at: T0 },
+      S_FLOW,
+    ).state;
+    const { completed } = apply(
+      started,
+      { type: 'TICK', at: T0 + TIMER.flowtimeMaxMs },
+      S_FLOW,
+    );
+    expect(completed?.credited).toBe(true);
+    expect(completed?.actualMs).toBe(TIMER.flowtimeMaxMs);
+  });
+
+  it('关掉 Flowtime 后回到普通番茄钟时长', () => {
+    const back = apply(
+      initialState(S_FLOW),
+      { type: 'SETTINGS_CHANGED', settings: S },
+      S,
+    ).state;
+    expect(back.mode).toBe('pomodoro');
+    expect(back.totalMs).toBe(25 * MIN);
   });
 });
 

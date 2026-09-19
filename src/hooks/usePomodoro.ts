@@ -7,7 +7,7 @@ import {
 } from '../lib/pomodoroMachine';
 import { rehydrateSession, serializeSession, type RestoredPhase } from '../lib/session';
 import { readStorage, STORAGE_KEYS, writeStorage } from '../lib/storage';
-import type { Phase, PhaseStatus, PomodoroSettings } from '../types';
+import type { Phase, PhaseStatus, PomodoroSettings, TimerMode } from '../types';
 
 export interface PomodoroController {
   phase: Phase;
@@ -23,6 +23,10 @@ export interface PomodoroController {
   restoredAttention: number;
   /** 把当前的分心次数同步进会话存档（页面刷新后不丢） */
   syncInterruptions: (count: number) => void;
+  /** 恢复出来的打断打点记录 */
+  restoredBreaks: string[];
+  /** 把当前的打断打点同步进会话存档 */
+  syncBreaks: (reasons: string[]) => void;
   start: () => void;
   pause: () => void;
   toggle: () => void;
@@ -32,6 +36,10 @@ export interface PomodoroController {
   select: (phase: Phase) => void;
   /** 给当前阶段续时间（"再来 5 分钟"），运行中 / 暂停中生效 */
   extend: (minutes: number) => void;
+  /** 主动结束当前专注并计入成绩（Flowtime 的主要出口） */
+  finish: () => void;
+  /** 当前计时模式 */
+  mode: TimerMode;
 }
 
 export interface UsePomodoroOptions {
@@ -49,8 +57,16 @@ export interface UsePomodoroOptions {
  */
 export function usePomodoro(
   settings: PomodoroSettings,
-  /** credited=false 表示这一阶段是被「跳过」的，不应计入统计 */
-  onPhaseComplete: (finished: Phase, next: Phase, credited: boolean) => void,
+  /**
+   * credited=false 表示这一阶段是被「跳过」的，不应计入统计。
+   * `actualMs` 是这一段的真实时长（Flowtime 下与 totalMs 不同，写日志必须用它）。
+   */
+  onPhaseComplete: (
+    finished: Phase,
+    next: Phase,
+    credited: boolean,
+    actualMs: number,
+  ) => void,
   options: UsePomodoroOptions = {},
 ): PomodoroController {
   const settingsRef = useRef(settings);
@@ -79,6 +95,9 @@ export function usePomodoro(
   /** 分心次数随会话一起落盘，刷新后接着算 */
   const interruptionsRef = useRef(bootRef.current.interruptions);
 
+  /** 主动打点的打断原因也一样，跟着会话走 */
+  const breakReasonsRef = useRef(bootRef.current.breakReasons);
+
   const dispatch = useCallback((event: PomodoroEvent) => {
     const result = transition(stateRef.current, event, settingsRef.current);
 
@@ -92,6 +111,7 @@ export function usePomodoro(
         result.completed.finished,
         result.completed.next,
         result.completed.credited,
+        result.completed.actualMs,
       );
     }
   }, []);
@@ -113,7 +133,12 @@ export function usePomodoro(
     signatureRef.current = signature;
     writeStorage(
       STORAGE_KEYS.session,
-      serializeSession(stateRef.current, Date.now(), interruptionsRef.current),
+      serializeSession(
+        stateRef.current,
+        Date.now(),
+        interruptionsRef.current,
+        breakReasonsRef.current,
+      ),
     );
   }, [state]);
 
@@ -123,7 +148,20 @@ export function usePomodoro(
     interruptionsRef.current = count;
     writeStorage(
       STORAGE_KEYS.session,
-      serializeSession(stateRef.current, Date.now(), count),
+      serializeSession(stateRef.current, Date.now(), count, breakReasonsRef.current),
+    );
+  }, []);
+
+  /**
+   * 打断打点变化时立刻更新存档。
+   * 记录只增不减，所以比长度就够 —— 不必为了判等去遍历一遍数组。
+   */
+  const syncBreaks = useCallback((reasons: string[]) => {
+    if (reasons.length === breakReasonsRef.current.length) return;
+    breakReasonsRef.current = reasons;
+    writeStorage(
+      STORAGE_KEYS.session,
+      serializeSession(stateRef.current, Date.now(), interruptionsRef.current, reasons),
     );
   }, []);
 
@@ -153,6 +191,9 @@ export function usePomodoro(
     settings.focusMinutes,
     settings.shortBreakMinutes,
     settings.longBreakMinutes,
+    // flowtimeMode 也要在这里：漏了它，打开开关时状态机收不到通知，
+    // 结果按钮写着「开始正计时」、实际跑的却还是 25 分钟倒计时
+    settings.flowtimeMode,
   ]);
 
   const start = useCallback(() => {
@@ -177,6 +218,11 @@ export function usePomodoro(
 
   const skip = useCallback(() => {
     dispatch({ type: 'SKIP', at: Date.now() });
+  }, [dispatch]);
+
+  /** 主动结束当前专注并计入成绩（Flowtime 的主要出口） */
+  const finish = useCallback(() => {
+    dispatch({ type: 'FINISH', at: Date.now() });
   }, [dispatch]);
 
   const select = useCallback(
@@ -204,6 +250,8 @@ export function usePomodoro(
     completedFocus: state.completedFocus,
     restoredAttention: bootRef.current.interruptions,
     syncInterruptions,
+    restoredBreaks: bootRef.current.breakReasons,
+    syncBreaks,
     start,
     pause,
     toggle,
@@ -211,5 +259,7 @@ export function usePomodoro(
     skip,
     select,
     extend,
+    finish,
+    mode: state.mode,
   };
 }

@@ -17,6 +17,7 @@ const running = (): PersistedSession =>
       totalMs: 25 * MIN,
       completedFocus: 0,
       endAt: T0 + 25 * MIN,
+      mode: 'pomodoro',
     },
     T0,
   );
@@ -33,7 +34,49 @@ describe('序列化', () => {
       endAt: null,
       savedAt: T0,
       interruptions: 0,
+      breakReasons: [],
     });
+  });
+
+  it('打断打点随会话一起保存', () => {
+    const saved = serializeSession(initialState(S), T0, 0, ['external', 'drift']);
+    expect(saved.breakReasons).toEqual(['external', 'drift']);
+  });
+
+  // 打断打点是后加的字段：老存档里没有它，读回来必须是空数组而不是 undefined
+  it('老存档没有 breakReasons 时读回空数组', () => {
+    const result = rehydrateSession(
+      {
+        phase: 'focus',
+        status: 'idle',
+        remainingMs: MIN,
+        totalMs: 25 * MIN,
+        completedFocus: 0,
+        endAt: null,
+        savedAt: T0,
+      },
+      T0,
+      S,
+    );
+    expect(result.breakReasons).toEqual([]);
+  });
+
+  // 模式不进存档：它由设置决定，用户改了设置，恢复时就应该跟着变
+  it('恢复出来的模式跟随当前设置，而不是存档时的模式', () => {
+    const saved = serializeSession(
+      {
+        phase: 'focus',
+        status: 'idle',
+        remainingMs: MIN,
+        totalMs: 25 * MIN,
+        completedFocus: 0,
+        endAt: null,
+        mode: 'pomodoro',
+      },
+      T0,
+    );
+    const result = rehydrateSession(saved, T0, { ...S, flowtimeMode: true });
+    expect(result.state.mode).toBe('flowtime');
   });
 });
 
@@ -47,6 +90,7 @@ describe('分心次数随会话保存', () => {
         totalMs: 25 * MIN,
         completedFocus: 0,
         endAt: T0 + 25 * MIN,
+        mode: 'pomodoro',
       },
       T0,
       3,

@@ -1,7 +1,9 @@
 import { LIMITS } from '../config';
+import { normalizeLevels } from '../data/mixer';
 import { SCENE_BY_ID } from '../data/scenes';
 import { DEFAULT_SETTINGS } from './defaults';
 import { STORAGE_KEYS, suspendPersistence, writeStorage } from './storage';
+import { normalizeTags } from './tags';
 import type {
   ArchivedTask,
   DayArchive,
@@ -62,6 +64,7 @@ function sanitizeSettings(value: unknown): PomodoroSettings | null {
     longBreakMinutes: int(value.longBreakMinutes, fallback.longBreakMinutes, 5, 60),
     longBreakInterval: int(value.longBreakInterval, fallback.longBreakInterval, 2, 8),
     autoStartNext: bool(value.autoStartNext, fallback.autoStartNext),
+    flowtimeMode: bool(value.flowtimeMode, fallback.flowtimeMode),
     volume: num(value.volume, fallback.volume, 0, 1),
     muted: bool(value.muted, fallback.muted),
     chimeEnabled: bool(value.chimeEnabled, fallback.chimeEnabled),
@@ -78,7 +81,26 @@ function sanitizeSettings(value: unknown): PomodoroSettings | null {
     bedLevel: num(value.bedLevel, fallback.bedLevel, 0, 1),
     spatialSound: bool(value.spatialSound, fallback.spatialSound),
     weeklyGoal: int(value.weeklyGoal, fallback.weeklyGoal, 0, 100),
+    mixerEnabled: bool(value.mixerEnabled, fallback.mixerEnabled),
+    // 嵌套对象不逐键信任：交给 normalizeLevels 过滤出合法数值，缺键补 0。
+    // 否则一份旧备份（还没有混音器）导入后会让滑块读到 undefined。
+    mixerLevels: normalizeLevels(
+      isRecord(value.mixerLevels)
+        ? (value.mixerLevels as Partial<Record<string, number>>)
+        : undefined,
+    ),
   };
+}
+
+/**
+ * 标签走 normalizeTags 而不是逐项信任：导入的数据可能超长、超量、混入非字符串。
+ * 备份里没有这个键时给空数组，而不是 undefined —— 归档与统计都按"一定有数组"来写。
+ */
+function tagsOf(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return normalizeTags(
+    value.filter((item): item is string => typeof item === 'string'),
+  );
 }
 
 function sanitizeTask(value: unknown): Task | null {
@@ -92,6 +114,7 @@ function sanitizeTask(value: unknown): Task | null {
     completedPomodoros: int(value.completedPomodoros, 0, 0, 9999),
     done: bool(value.done, false),
     createdAt: num(value.createdAt, Date.now(), 0, MAX_TIMESTAMP),
+    tags: tagsOf(value.tags),
   };
 }
 
@@ -113,6 +136,7 @@ function sanitizeArchivedTask(value: unknown): ArchivedTask | null {
     estimatedPomodoros: int(value.estimatedPomodoros, 1, 1, 99),
     completedPomodoros: int(value.completedPomodoros, 0, 0, 9999),
     status: value.status,
+    tags: tagsOf(value.tags),
   };
 }
 

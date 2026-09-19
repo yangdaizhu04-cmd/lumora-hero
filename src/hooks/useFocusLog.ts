@@ -14,6 +14,8 @@ export interface FocusLogApi {
     taskId: string | null,
     scene: SceneId,
     interruptions?: number,
+    /** 主动打点的打断原因；空数组会被省略，不往日志里塞空字段 */
+    breakReasons?: string[],
   ) => void;
   clearLog: () => void;
 }
@@ -31,6 +33,7 @@ export function useFocusLog(now: number): FocusLogApi {
       taskId: string | null,
       scene: SceneId,
       interruptions?: number,
+      breakReasons?: string[],
     ) => {
       if (minutes <= 0) return;
       const now = new Date();
@@ -42,6 +45,8 @@ export function useFocusLog(now: number): FocusLogApi {
         taskId,
         scene,
         ...(interruptions === undefined ? {} : { interruptions }),
+        // 没打点就不写这个字段：空数组会让"这段没采集"和"采集了但一次都没有"分不清
+        ...(breakReasons && breakReasons.length > 0 ? { breakReasons } : {}),
       };
       setLog((prev) => [...prev, entry].slice(-LIMITS.logEntries));
     },

@@ -8,6 +8,13 @@ import {
   Upload,
   X,
 } from 'lucide-react';
+import { FOCUS_METHODS, matchFocusMethod, methodPatch } from '../data/focusMethods';
+import {
+  hasAnyLevel,
+  MIXER_PRESETS,
+  MIXER_SOURCES,
+  normalizeLevels,
+} from '../data/mixer';
 import { clamp, formatRemainingMinutes } from '../lib/time';
 import { DEFAULT_SETTINGS } from '../lib/defaults';
 import { SANS, SHORTCUT_HINT } from '../lib/ui';
@@ -24,10 +31,13 @@ interface Props {
   sleepRemainingMs: number;
   /** 垫层试听进行中 */
   bedPreview: boolean;
+  /** 自定义混音试听进行中 */
+  mixerPreview: boolean;
   /** 已记录的专注条数（决定 CSV 导出是否可用） */
   logCount: number;
   onChange: (patch: Partial<PomodoroSettings>) => void;
   onPreviewBed: () => void;
+  onPreviewMixer: () => void;
   onNotificationsChange: (enabled: boolean) => void;
   onStartSleep: (minutes: number) => void;
   onCancelSleep: () => void;
@@ -51,9 +61,11 @@ function SettingsDrawerComponent({
   deviceHint,
   sleepRemainingMs,
   bedPreview,
+  mixerPreview,
   logCount,
   onChange,
   onPreviewBed,
+  onPreviewMixer,
   onNotificationsChange,
   onStartSleep,
   onCancelSleep,
@@ -100,6 +112,9 @@ function SettingsDrawerComponent({
   const notifyDisabled =
     notifyPermission === 'unsupported' || notifyPermission === 'denied';
 
+  // 当前时长对应哪个预设（手调过任意一项就是 null）
+  const activeMethod = matchFocusMethod(settings);
+
   return (
     <>
       <div
@@ -144,6 +159,52 @@ function SettingsDrawerComponent({
         <div className="flex-1 overflow-y-auto px-6 pb-10">
           {/* ---------- 计时 ---------- */}
           <Section title="计时">
+            {/* 预设：一键切换工作节奏。逐个数值调四个 Stepper 才能换一种节奏，太慢 */}
+            <div className="border-b border-white/[0.06] py-4">
+              <div className="flex flex-wrap gap-2">
+                {FOCUS_METHODS.map((method) => {
+                  const active = activeMethod?.id === method.id;
+                  return (
+                    <button
+                      key={method.id}
+                      type="button"
+                      onClick={() => onChange(methodPatch(method))}
+                      // 四个字段全中才算"在用这个预设"，手调过任意一个就不高亮
+                      aria-pressed={active}
+                      className="rounded-full px-3 py-1.5 text-xs transition-colors duration-300"
+                      style={{
+                        background: active
+                          ? 'rgba(255,255,255,0.85)'
+                          : 'rgba(255,255,255,0.08)',
+                        color: active ? '#182C41' : 'inherit',
+                        opacity: active ? 1 : 0.75,
+                      }}
+                    >
+                      {method.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-[11px] text-white/40">
+                {activeMethod
+                  ? activeMethod.hint
+                  : '已自定义时长；点上面的预设可以一键套用'}
+              </p>
+            </div>
+            <Row
+              label="Flowtime"
+              hint={
+                settings.flowtimeMode
+                  ? '正在正计时；下面的专注时长在此期间不生效'
+                  : '不倒计时，只往上累计实际专注时间，由你决定何时结束'
+              }
+            >
+              <Toggle
+                checked={settings.flowtimeMode}
+                onChange={(checked) => onChange({ flowtimeMode: checked })}
+                label="Flowtime"
+              />
+            </Row>
             <Stepper
               label="专注时长"
               value={settings.focusMinutes}
@@ -251,6 +312,84 @@ function SettingsDrawerComponent({
                 </button>
               </div>
             </Row>
+            <Row label="自定义混音" hint="自己搭配雨声、海浪等音源，取代场景音景">
+              <Toggle
+                checked={settings.mixerEnabled}
+                onChange={(checked) => onChange({ mixerEnabled: checked })}
+                label="自定义混音"
+              />
+            </Row>
+            {settings.mixerEnabled && (
+              <div className="border-b border-white/[0.06] py-4">
+                {/* 预设：从零开始调六个滑块门槛太高，先给几个能直接用的组合 */}
+                <div className="flex flex-wrap gap-2">
+                  {MIXER_PRESETS.map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() =>
+                        onChange({ mixerLevels: normalizeLevels(preset.levels) })
+                      }
+                      className="liquid-glass rounded-full px-3 py-1.5 text-xs transition-opacity duration-300 hover:opacity-75"
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  {MIXER_SOURCES.map((source) => {
+                    // 老存档里 mixerLevels 可能整个缺失，逐个兜底而不是信任整个对象
+                    const level = settings.mixerLevels?.[source.id] ?? 0;
+                    return (
+                      <div key={source.id} className="flex items-center gap-3">
+                        <span className="w-10 shrink-0 text-xs text-white/70">
+                          {source.label}
+                        </span>
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          value={Math.round(level * 100)}
+                          // 与垫层同理：拖动只改数值，松手 / 键盘调整才试听，
+                          // 否则一次拖动会把 8 秒试听窗反复重启
+                          onChange={(event) =>
+                            onChange({
+                              mixerLevels: normalizeLevels({
+                                ...settings.mixerLevels,
+                                [source.id]: Number(event.target.value) / 100,
+                              }),
+                            })
+                          }
+                          onPointerUp={onPreviewMixer}
+                          onKeyUp={onPreviewMixer}
+                          aria-label={`${source.label}音量`}
+                          className="range-glass min-w-0 flex-1"
+                        />
+                        <span className="w-7 shrink-0 text-right text-[11px] tabular-nums text-white/50">
+                          {Math.round(level * 100)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-4 flex items-center justify-between gap-3">
+                  <span className="text-[11px] leading-snug text-white/40">
+                    {hasAnyLevel(settings.mixerLevels)
+                      ? '音量 0 的音源不加载；场景仍决定画面'
+                      : '先选一个预设，或把滑块推上去'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={onPreviewMixer}
+                    className="liquid-glass shrink-0 rounded-full px-3 py-1.5 text-xs transition-opacity duration-300 hover:opacity-75"
+                  >
+                    {mixerPreview ? '试听中' : '试听'}
+                  </button>
+                </div>
+              </div>
+            )}
             <Row label="空间化" hint="环境音在左右耳之间极缓慢地游移（建议戴耳机）">
               <Toggle
                 checked={settings.spatialSound}

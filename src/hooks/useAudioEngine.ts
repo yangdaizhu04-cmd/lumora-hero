@@ -12,6 +12,11 @@ export interface AudioApi {
   /** 注册全部场景的音层，解锁后预热（切换场景不再有加载延迟） */
   setRegistry: (configs: AudioLayerConfig[]) => void;
   setScene: (layers: AudioLayerConfig[]) => void;
+  /**
+   * 自定义混音：传音层数组则用它们取代场景音景，传 null 交还给场景。
+   * 混音器激活期间切场景不会改变发声。
+   */
+  setMixer: (layers: AudioLayerConfig[] | null) => void;
   setVolume: (volume: number) => void;
   setMuted: (muted: boolean) => void;
   setSpatial: (enabled: boolean) => void;
@@ -54,6 +59,7 @@ export function useAudioEngine(): AudioApi {
       setPlaying: (playing) => engine.setPlaying(playing),
       setRegistry: (configs) => engine.setRegistry(configs),
       setScene: (layers) => engine.setScene(layers),
+      setMixer: (layers) => engine.setMixer(layers),
       setVolume: (volume) => engine.setVolume(volume),
       setMuted: (muted) => engine.setMuted(muted),
       setSpatial: (enabled) => engine.setSpatial(enabled),

@@ -1,3 +1,4 @@
+import { normalizeLevels } from '../data/mixer';
 import type { PomodoroSettings } from '../types';
 
 export const DEFAULT_SETTINGS: PomodoroSettings = {
@@ -6,6 +7,8 @@ export const DEFAULT_SETTINGS: PomodoroSettings = {
   longBreakMinutes: 15,
   longBreakInterval: 4,
   autoStartNext: false,
+  // 默认仍是经典番茄钟；Flowtime 是需要主动开启的另一种工作方式
+  flowtimeMode: false,
   volume: 0.7,
   muted: false,
   chimeEnabled: true,
@@ -23,4 +26,8 @@ export const DEFAULT_SETTINGS: PomodoroSettings = {
   spatialSound: true,
   // 每周目标：0 = 不设定（统计条上不显示），要追踪目标可以在设置里改成 5 的倍数
   weeklyGoal: 20,
+  // 混音器默认关闭（场景音景才是默认体验），但音量表预置成「雨夜」——
+  // 用户一开开关就能听到东西，而不是面对六个全是 0 的滑块
+  mixerEnabled: false,
+  mixerLevels: normalizeLevels({ rain: 0.8, wind: 0.25 }),
 };
